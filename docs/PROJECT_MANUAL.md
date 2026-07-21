@@ -30,7 +30,7 @@ scripts/                  本机服务启动脚本
 tools/                    本机 Memurai 与 Live777 二进制（不提交 Git）
 ```
 
-## 4. 本机环境
+## 4. 协作者部署与本机环境
 
 需要安装或运行：
 
@@ -39,6 +39,19 @@ tools/                    本机 Memurai 与 Live777 二进制（不提交 Git�
 - PostgreSQL 15+（Windows 服务，端口 `5432`）
 - Memurai Developer（端口 `6379`）
 - Live777 0.9.0（端口 `7777`）
+
+### 新成员从零开始
+
+```powershell
+git clone https://github.com/HyperPress/MeetNexus.git
+cd MeetNexus
+git switch -c feat/<你的任务名>
+.\scripts\setup.ps1 -InstallPrerequisites
+```
+
+`setup.ps1` 自动执行 `npm ci`、`cargo fetch` 和 `cargo build`，并可用 winget 安装缺失的 Node.js 与 Rust。若新安装了运行时，请重开 PowerShell 后再次运行脚本。
+
+PostgreSQL、Memurai、Live777 是本机服务：PostgreSQL 的管理员密码必须由安装者自行设置，禁止写入代码库；Memurai 与 Live777 二进制也不提交 Git。脚本会检查这三项并给出缺失提示。详细配置见 [LOCAL_SETUP.md](LOCAL_SETUP.md)。
 
 Memurai 与 Live777 的启动命令：
 
@@ -55,13 +68,14 @@ npm run dev --prefix apps/web
 
 详细环境变量和 PostgreSQL 初始化方式见 [LOCAL_SETUP.md](LOCAL_SETUP.md)。真实密码和 Token 只能保存在本机环境变量中，禁止提交 Git。
 
-## 5. 协作流程
+## 5. 分支协作与组长合并
 
-1. 开始任务前阅读 `AGENTS.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`。
-2. 涉及 API 时，先更新 `docs/openapi.yaml`。
-3. 在独立功能分支开发，一个提交只处理一个任务。
-4. 完成后执行相关检查，并更新 `docs/STATUS.md`。
-5. 通过 Pull Request 审核后再合并。
+1. 开始任务前阅读 `AGENTS.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`，并先同步远端 `main`。
+2. 每位成员必须创建自己的分支，例如 `feat/room-api`、`fix/login-error`、`docs/setup-guide`；禁止直接在 `main` 开发或推送。
+3. 一条分支只处理一个任务；涉及 API 时，先更新 `docs/openapi.yaml`。
+4. 完成后运行检查、更新 `docs/STATUS.md`，再推送自己的分支并创建 Pull Request。
+5. 只有组长审核 Pull Request、处理冲突并合并到 `main`。成员不得自行合并自己的变更。
+6. 合并完成后删除远端功能分支，并用最新 `main` 开始下一项任务。
 
 ## 6. 质量检查
 

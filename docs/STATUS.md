@@ -8,6 +8,8 @@
 - 确定最终技术路线：Rust/Axum + React/TypeScript + Live777，本机直接运行，不使用 Docker。
 - 在 Windows 本机准备并启动 PostgreSQL 15、Memurai Developer 4.1.8 和 Live777 0.9.0。
 - 新增团队项目手册，记录架构、本机运行、协作与质量检查方式。
+- 新增 `scripts/setup.ps1`：可恢复 Node/Rust 项目依赖，并检查本机服务前置条件。
+- 明确分支协作规则：成员在个人分支开发，组长通过 Pull Request 统一合并至 `main`。
 
 ## 进行中
 
@@ -28,3 +30,4 @@
 - 2026-07-21：放弃 WOOM MVP 路线，恢复 Rust/Axum AI Native 技术基线；保留本机直接运行方式。
 - 2026-07-21：使用 Windows 原生 PostgreSQL、项目本地 Memurai 与 Live777 替代 Docker/WSL 方案。
 - 2026-07-21：创建 `docs/PROJECT_MANUAL.md`。
+- 2026-07-21：补充协作者一键初始化脚本与分支合并流程。

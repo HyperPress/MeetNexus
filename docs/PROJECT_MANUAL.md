@@ -23,12 +23,50 @@ React + TypeScript 前端
 ## 3. 目录说明
 
 ```text
-apps/web/                 前端工程
-services/api/             Rust/Axum 后端工程
-docs/                     架构、进度、API、运行与本手册
-scripts/                  本机服务启动脚本
-tools/                    本机 Memurai 与 Live777 二进制（不提交 Git）
+MeetNexus/
+├─ AGENTS.md                         全仓库 AI 与团队协作规则
+├─ README.md                         项目入口说明
+├─ apps/
+│  └─ web/                           React + TypeScript 前端
+│     ├─ AGENTS.md                   前端专属 AI 约束
+│     ├─ src/
+│     │  ├─ app/                     路由、Provider、布局和应用装配
+│     │  ├─ components/              跨业务通用 UI 组件
+│     │  ├─ features/
+│     │  │  ├─ auth/                 身份与访问控制
+│     │  │  ├─ rooms/                房间业务
+│     │  │  └─ meeting/              会议界面与互动业务
+│     │  ├─ lib/
+│     │  │  ├─ api/                  HTTP/WebSocket 客户端
+│     │  │  └─ media/                设备、WebRTC、WHIP/WHEP 适配
+│     │  ├─ schemas/                 Zod 运行时数据校验
+│     │  └─ types/                   跨功能共享类型
+│     └─ tests/e2e/                  Playwright 端到端测试
+├─ services/
+│  └─ api/                           Rust + Axum 后端
+│     ├─ AGENTS.md                   后端专属 AI 约束
+│     ├─ src/
+│     │  ├─ config/                  配置加载与校验
+│     │  ├─ domain/                  领域模型和核心业务规则
+│     │  ├─ application/             应用用例与端口 trait
+│     │  ├─ infrastructure/          PostgreSQL、Redis、Live777 适配
+│     │  ├─ http/                    Axum 路由、中间件和 DTO
+│     │  └─ telemetry/               tracing 与结构化日志
+│     ├─ migrations/                 SQLx 数据库迁移
+│     └─ tests/                      后端集成测试
+├─ docs/
+│  ├─ adr/                           架构决策记录
+│  ├─ runbooks/                      运维与排障手册
+│  ├─ openapi.yaml                   唯一 API 契约
+│  ├─ ARCHITECTURE.md                系统架构
+│  ├─ LOCAL_SETUP.md                 本机部署说明
+│  ├─ PROJECT_MANUAL.md              项目手册
+│  └─ STATUS.md                      当前进度与交接状态
+├─ scripts/                          初始化和本机服务脚本
+└─ tools/                            Memurai、Live777 本机二进制（不提交 Git）
 ```
+
+各业务目录中的 `README.md` 是当前阶段的职责说明和 Git 占位文件，不代表相关功能已经完成。新增代码必须放入对应边界；如果现有目录无法合理容纳，应先更新架构说明并取得团队确认。
 
 ## 4. 协作者部署与本机环境
 

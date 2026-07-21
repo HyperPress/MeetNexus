@@ -26,6 +26,13 @@
 - API 在代理媒体请求前检查用户、房间和流之间的权限关系。
 - Live777 地址和 Token 只能从本机环境变量读取，禁止进入前端代码或 Git。
 
+## 代码分层
+
+- Web 使用 `app → features → lib` 的依赖方向：应用装配使用业务功能，业务功能通过公共基础设施访问 API 和媒体能力。
+- API 使用 `http → application → domain` 的依赖方向；`infrastructure` 实现 application 定义的外部端口。
+- `domain` 不依赖 Axum、SQLx、Redis 或 Live777，HTTP handler 不承载业务规则。
+- 每层目录的具体职责见对应 `README.md` 与局部 `AGENTS.md`。
+
 ## 质量门禁
 
 ```text

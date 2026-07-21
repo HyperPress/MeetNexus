@@ -1,32 +1,20 @@
-# React + TypeScript + Vite
+# MeetNexus Web 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+本目录是 MeetNexus 的 React + TypeScript 前端工程，使用 Vite 构建，并通过 Tailwind CSS 与 daisyUI 约束界面样式。
 
-Currently, two official plugins are available:
+## 常用命令
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+npm ci
+npm run dev
+npm run lint
+npm run build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## 开发约束
+
+- 开始开发前阅读本目录的 `AGENTS.md` 和仓库根目录的 `AGENTS.md`。
+- 用户可见的界面文案、提示、错误信息和无障碍文本必须使用简体中文。
+- API 响应必须经过 Zod 运行时校验，不能只依赖 TypeScript 类型。
+- 业务功能放在 `src/features/`，公共 API 和媒体能力放在 `src/lib/`。
+- 端到端测试放在 `tests/e2e/`。

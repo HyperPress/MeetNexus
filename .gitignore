@@ -1,0 +1,24 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+**/target/
+
+# IDE and operating-system files
+.DS_Store
+.idea/
+.vscode/
+
+# Local native service binaries and data (installed per developer machine)
+tools/

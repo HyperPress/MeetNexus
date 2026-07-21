@@ -1,0 +1,6 @@
+openapi: 3.0.3
+info:
+  title: MeetNexus API
+  version: 0.1.0
+  description: 视频会议业务接口；接口变更必须先更新此文件。
+paths: {}

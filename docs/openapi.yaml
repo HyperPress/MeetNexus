@@ -3,4 +3,116 @@ info:
   title: MeetNexus API
   version: 0.1.0
   description: 视频会议业务接口；接口变更必须先更新此文件。
-paths: {}
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: 检查 API 服务是否存活
+      description: 仅检查 MeetNexus API 进程是否能够响应，不探测 PostgreSQL、Redis 或 Live777。
+      tags:
+        - 系统
+      responses:
+        "200":
+          description: API 服务运行正常
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+components:
+  headers:
+    RequestId:
+      description: 本次请求的关联 ID
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    RouteNotFound:
+      description: 请求的接口不存在
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MethodNotAllowed:
+      description: 请求方法不受支持
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: API 内部错误
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthData:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+          enum:
+            - meetnexus-api
+        version:
+          type: string
+          example: 0.1.0
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthData"
+        request_id:
+          type: string
+          format: uuid
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: ROUTE_NOT_FOUND
+        message:
+          type: string
+          example: 请求的接口不存在
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+        - request_id
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+        request_id:
+          type: string
+          format: uuid

@@ -12,6 +12,9 @@
 - 明确分支协作规则：成员在个人分支开发，组长通过 Pull Request 统一合并至 `main`。
 - 完成前端、后端、测试、迁移、ADR 与运行手册的项目目录骨架，并为各目录标明职责边界。
 - 确立简体中文规范：项目说明、开发提示和 Web 用户界面默认使用中文，并完成现有英文模板说明的本地化。
+- 完成源码公开展示准备：补充 MIT License，完善当前阶段、技术栈、本机运行和文档入口说明。
+- 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
+- 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
 
 ## 进行中
 
@@ -19,6 +22,7 @@
 
 ## 下一步
 
+- 将 GitHub 仓库设为公开，并供岭创之夏展示页引用。
 - 配置本机 PostgreSQL、Redis 与 Live777，并验证 API 能连接这些服务。
 - 定义房间、参会者和媒体授权的 OpenAPI 契约。
 - 实现第一个最小功能：API 健康检查、统一错误模型和配置加载。
@@ -37,11 +41,11 @@
 - 2026-07-21：补充协作者一键初始化脚本与分支合并流程。
 - 2026-07-21：补齐项目文件结构，并将目录职责同步到架构文档和项目手册。
 - 2026-07-21：补充中文语言规范，翻译前端模板、目录说明和本机脚本提示。
-- 2026-07-28：完成中文首页、创建与加入页面
+- 2026-07-28：完成中文首页、创建与加入页面。
 - 修改文件：
   - `apps/web/src/App.tsx`
   - `apps/web/src/app/AppRouter.tsx`
   - `apps/web/src/features/rooms/pages/HomePage.tsx`
   - `apps/web/src/features/rooms/pages/CreateRoomPage.tsx`
   - `apps/web/src/features/rooms/pages/JoinRoomPage.tsx`
-  
+- 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。

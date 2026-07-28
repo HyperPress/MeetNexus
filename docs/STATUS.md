@@ -13,7 +13,7 @@
 - 完成前端、后端、测试、迁移、ADR 与运行手册的项目目录骨架，并为各目录标明职责边界。
 - 确立简体中文规范：项目说明、开发提示和 Web 用户界面默认使用中文，并完成现有英文模板说明的本地化。
 - 完成后端基础与接口规范：定义 `/health` OpenAPI 契约，实现集中配置加载、统一成功/错误响应、请求 ID 传播与 JSON 结构化日志；修改 `docs/openapi.yaml`、`services/api/src/config/`、`services/api/src/telemetry/`、`services/api/src/http/`、程序入口及 HTTP 集成测试。
-- 完成中文首页、创建会议页面和加入会议页面，增加基础 Hash 页面导航与中文表单本地校验。
+- 完成中文首页、创建会议页面和加入会议页面，并通过各页面的 Playwright 端到端测试，增加基础 Hash 页面导航与中文表单本地校验。
 - 完成源码公开展示准备：补充 MIT License，完善当前阶段、技术栈、本机运行和文档入口说明。
 - 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
 - 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
@@ -50,11 +50,5 @@
 - 2026-07-21：补充协作者一键初始化脚本与分支合并流程。
 - 2026-07-21：补齐项目文件结构，并将目录职责同步到架构文档和项目手册。
 - 2026-07-21：补充中文语言规范，翻译前端模板、目录说明和本机脚本提示。
-- 2026-07-28：完成中文首页、创建与加入页面。
-- 修改文件：
-  - `apps/web/src/App.tsx`
-  - `apps/web/src/app/AppRouter.tsx`
-  - `apps/web/src/features/rooms/pages/HomePage.tsx`
-  - `apps/web/src/features/rooms/pages/CreateRoomPage.tsx`
-  - `apps/web/src/features/rooms/pages/JoinRoomPage.tsx`
-- 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。
+- 2026-07-28：完成中文首页、创建与加入页面，并通过各页面的 Playwright 端到端测试。
+- 验证结果：前端 lint、生产构建和 Playwright 端到端测试通过，共 4 个测试通过。

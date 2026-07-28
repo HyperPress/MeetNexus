@@ -1,18 +1,44 @@
-use std::env;
+use std::process;
 
-use axum::{Router, routing::get};
+use api::{app, config::AppConfig, telemetry};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().json().with_target(false).init();
+    let config = AppConfig::from_env().unwrap_or_else(|error| {
+        eprintln!("API 配置加载失败：{error}");
+        process::exit(1);
+    });
+    telemetry::init(&config.rust_log).unwrap_or_else(|error| {
+        eprintln!("API 日志初始化失败：{error}");
+        process::exit(1);
+    });
 
-    let address = env::var("SERVER_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
-    let listener = tokio::net::TcpListener::bind(&address)
+    let listener = tokio::net::TcpListener::bind(config.server_addr)
         .await
-        .expect("SERVER_ADDR must be a valid bind address");
+        .unwrap_or_else(|error| {
+            eprintln!("API 监听地址绑定失败：{error}");
+            process::exit(1);
+        });
 
-    tracing::info!(event = "api_started", %address);
+    tracing::info!(
+        request_id = "-",
+        room_id = "-",
+        user_id = "-",
+        stream_id = "-",
+        event = "api_started",
+        error_code = "-",
+        address = %config.server_addr,
+    );
 
-    let app = Router::new().route("/health", get(|| async { "ok" }));
-    axum::serve(listener, app).await.expect("API server failed");
+    if let Err(error) = axum::serve(listener, app()).await {
+        tracing::error!(
+            request_id = "-",
+            room_id = "-",
+            user_id = "-",
+            stream_id = "-",
+            event = "api_stopped",
+            error_code = "API_SERVE_ERROR",
+            error = %error,
+        );
+    }
 }

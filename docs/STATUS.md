@@ -22,14 +22,16 @@
 
 ## 下一步
 
-- 由组长审核并合并 `docs/showcase-release` 分支，合并后将 GitHub 仓库设为公开，并供岭创之夏展示页引用。
+- 将 GitHub 仓库设为公开，并供岭创之夏展示页引用。
 - 配置本机 PostgreSQL、Redis 与 Live777，并验证 API 能连接这些服务。
 - 定义房间、参会者和媒体授权的 OpenAPI 契约。
 - 实现第一个最小功能：API 健康检查、统一错误模型和配置加载。
+- 下一步：等待房间 OpenAPI 契约确定后，增加 Zod 响应模型和 HTTP 客户端，并接入真实的创建与加入房间接口。
 
 ## 阻塞项
 
 - 需要现有 PostgreSQL `postgres` 管理员密码，以创建 `meetnexus` 项目数据库与用户。
+- 遗留问题：`docs/openapi.yaml` 尚未定义房间接口，创建和加入表单暂时只进行本地校验，不发送网络请求。
 
 ## 最近变更
 
@@ -39,4 +41,11 @@
 - 2026-07-21：补充协作者一键初始化脚本与分支合并流程。
 - 2026-07-21：补齐项目文件结构，并将目录职责同步到架构文档和项目手册。
 - 2026-07-21：补充中文语言规范，翻译前端模板、目录说明和本机脚本提示。
+- 2026-07-28：完成中文首页、创建与加入页面。
+- 修改文件：
+  - `apps/web/src/App.tsx`
+  - `apps/web/src/app/AppRouter.tsx`
+  - `apps/web/src/features/rooms/pages/HomePage.tsx`
+  - `apps/web/src/features/rooms/pages/CreateRoomPage.tsx`
+  - `apps/web/src/features/rooms/pages/JoinRoomPage.tsx`
 - 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。

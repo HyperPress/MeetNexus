@@ -10,6 +10,7 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    permissions: ['camera', 'microphone'],
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
@@ -19,6 +20,13 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // 仅用于端到端测试，避免依赖开发者的真实摄像头和麦克风。
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+          ],
+        },
       },
     },
   ],

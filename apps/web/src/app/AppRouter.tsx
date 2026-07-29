@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { PreJoinPage } from '../features/meeting/pages/PreJoinPage'
 import { CreateRoomPage } from '../features/rooms/pages/CreateRoomPage'
 import { HomePage } from '../features/rooms/pages/HomePage'
 import { JoinRoomPage } from '../features/rooms/pages/JoinRoomPage'
 
-type RouteName = 'home' | 'create' | 'join'
+type RouteName = 'home' | 'create' | 'join' | 'preview'
 
 function readRoute(): RouteName {
   const route = window.location.hash.replace(/^#\/?/, '')
@@ -14,6 +15,10 @@ function readRoute(): RouteName {
 
   if (route === 'join') {
     return 'join'
+  }
+
+  if (route === 'preview') {
+    return 'preview'
   }
 
   return 'home'
@@ -44,6 +49,10 @@ export function AppRouter() {
     page = <JoinRoomPage />
   }
 
+  if (route === 'preview') {
+    page = <PreJoinPage />
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-base-200">
       <header className="navbar border-b border-base-300 bg-base-100 px-4 sm:px-8">
@@ -59,6 +68,10 @@ export function AppRouter() {
         >
           <a className="btn btn-ghost btn-sm sm:btn-md" href="#/">
             首页
+          </a>
+
+          <a className="btn btn-ghost btn-sm sm:btn-md" href="#/preview">
+            设备检测
           </a>
 
           <a className="btn btn-ghost btn-sm sm:btn-md" href="#/create">

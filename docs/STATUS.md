@@ -18,6 +18,7 @@
 - 完成源码公开展示准备：补充 MIT License，完善当前阶段、技术栈、本机运行和文档入口说明。
 - 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
 - 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
+- 新增根目录 `.env.example`，保存 PostgreSQL、Redis、Live777 与 API 的非敏感本机连接模板，并明确真实密码和 Token 不得提交。
 
 ## 进行中
 
@@ -42,6 +43,7 @@
 - 2026-07-28：使用本机占位配置启动 API，`GET /health` 返回 200；响应头与响应体请求 ID 一致，JSON 日志包含规定的关联字段、状态码和耗时。
 - 2026-07-28：`npm run lint --prefix apps/web`、TypeScript 静态检查和 `npm run build --prefix apps/web` 全部通过。
 - 2026-07-29：前端 lint、生产构建和 Playwright 端到端测试全部通过，共 8 个测试通过；设备预览使用明确隔离的 Chromium 测试设备，屏幕分享测试使用测试目录内隔离的媒体流，真实摄像头、麦克风和系统屏幕选择器仍需手动验证。
+- 2026-07-28：本机配置模板通过 `git diff --check`，确认 `.env.example` 可跟踪且真实 `.env` 继续被 Git 忽略。
 
 ## 最近变更
 
@@ -55,3 +57,5 @@
 - 2026-07-28：完成中文首页、创建与加入页面，并通过各页面的 Playwright 端到端测试。
 - 验证结果：前端 lint、生产构建和 Playwright 端到端测试通过，共 4 个测试通过。
 - 2026-07-29：新增会前设备检测页面、本地媒体适配层、摄像头镜像切换和屏幕分享测试；读取共享来源、分辨率、帧率与轨道名称，不依赖房间 API，不向服务器发送音视频。
+- 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。
+- 2026-07-28：新增非敏感本机配置模板并补充使用说明；修改 `.env.example`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。

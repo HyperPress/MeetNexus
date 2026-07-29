@@ -38,14 +38,16 @@ Memurai 与 Live777 的本机二进制文件位于未纳入 Git 的 `tools/` 目
 
 ## 环境变量
 
-在启动 API 的 PowerShell 中设置本机服务地址：
+根目录 `.env.example` 保存了可以提交到 Git 的本机连接模板，包括 PostgreSQL 数据库名、用户、端口以及 Redis 和 Live777 地址。真实密码和 Token 只能保存在被 Git 忽略的本机 `.env` 或当前终端环境变量中。
+
+当前 API 直接读取进程环境变量，不会自动加载 `.env`。在启动 API 的 PowerShell 中设置：
 
 ```powershell
 $env:SERVER_ADDR = "127.0.0.1:8080"
-$env:DATABASE_URL = "postgres://meetnexus:replace-with-local-password@localhost:5432/meetnexus"
-$env:REDIS_URL = "redis://localhost:6379/0"
-$env:LIVE777_URL = "http://localhost:7777"
-$env:RUST_LOG = "info"
+$env:DATABASE_URL = "postgres://meetnexus:replace-with-local-password@127.0.0.1:5432/meetnexus"
+$env:REDIS_URL = "redis://127.0.0.1:6379/0"
+$env:LIVE777_URL = "http://127.0.0.1:7777"
+$env:RUST_LOG = "api=info,tower_http=info"
 ```
 
 Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`；禁止提交真实密码或 Token。

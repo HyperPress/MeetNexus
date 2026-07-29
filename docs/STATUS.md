@@ -14,6 +14,7 @@
 - 确立简体中文规范：项目说明、开发提示和 Web 用户界面默认使用中文，并完成现有英文模板说明的本地化。
 - 完成后端基础与接口规范：定义 `/health` OpenAPI 契约，实现集中配置加载、统一成功/错误响应、请求 ID 传播与 JSON 结构化日志；修改 `docs/openapi.yaml`、`services/api/src/config/`、`services/api/src/telemetry/`、`services/api/src/http/`、程序入口及 HTTP 集成测试。
 - 完成中文首页、创建会议页面和加入会议页面，增加基础 Hash 页面导航与中文表单本地校验。
+- 完成房间业务与数据存储：定义创建、查询、加入、离开与心跳的房间 OpenAPI 契约；实现领域校验、房间用例、PostgreSQL 房间仓储、Redis 在线状态仓储，以及首个 SQLx 迁移文件。
 - 完成源码公开展示准备：补充 MIT License，完善当前阶段、技术栈、本机运行和文档入口说明。
 - 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
 - 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
@@ -25,21 +26,22 @@
 ## 下一步
 
 - 将 GitHub 仓库设为公开，并供岭创之夏展示页引用。
-- 在现有配置加载基础上建立 PostgreSQL、Redis 与 Live777 客户端，并验证 API 能连接这些本机服务。
-- 定义房间、参会者和媒体授权的 OpenAPI 契约。
-- 等待房间 OpenAPI 契约确定后，增加 Zod 响应模型和 HTTP 客户端，并接入真实的创建与加入房间接口。
+- 在前端增加 Zod 响应模型和 HTTP 客户端，并接入真实的创建、查询、加入与离开房间接口。
+- 为媒体模块使用房间成员编号完成媒体授权设计。
 
 ## 阻塞项
 
 - 需要现有 PostgreSQL `postgres` 管理员密码，以创建 `meetnexus` 项目数据库与用户。
 - 本次健康检查仅验证 API 进程存活，尚未实现 PostgreSQL、Redis 与 Live777 的就绪探测。
-- `docs/openapi.yaml` 尚未定义房间接口，创建和加入表单暂时只进行本地校验，不发送网络请求。
+- 暂无。
 
 ## 验证结果
 
 - 2026-07-28：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 全部通过，共 8 个单元测试和 5 个 HTTP 集成测试。
 - 2026-07-28：使用本机占位配置启动 API，`GET /health` 返回 200；响应头与响应体请求 ID 一致，JSON 日志包含规定的关联字段、状态码和耗时。
 - 2026-07-28：`npm run lint --prefix apps/web`、TypeScript 静态检查和 `npm run build --prefix apps/web` 全部通过。
+- 2026-07-30：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test` 通过，共 11 个单元测试和 5 个 HTTP 集成测试；真实 PostgreSQL/Redis 集成测试通过。
+- 2026-07-30：使用本机 PostgreSQL 与 Redis 启动 API，创建、查询、加入、心跳和离开会议接口均验证通过；验证产生的临时会议记录已清理。
 
 ## 最近变更
 
@@ -58,3 +60,5 @@
   - `apps/web/src/features/rooms/pages/CreateRoomPage.tsx`
   - `apps/web/src/features/rooms/pages/JoinRoomPage.tsx`
 - 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。
+- 2026-07-29：新增房间和成员数据库迁移、领域模型、房间应用用例、PostgreSQL/Redis 仓储与房间 HTTP 路由；OpenAPI 增加创建、查询、加入、离开和心跳接口。
+- 2026-07-30：完成房间模块的 Rust 静态检查、单元测试、HTTP 回归、真实存储集成测试和 API 运行验证。

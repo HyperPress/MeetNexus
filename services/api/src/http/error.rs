@@ -12,14 +12,51 @@ pub(crate) struct ErrorCode(pub &'static str);
 
 #[derive(Debug)]
 pub enum ApiError {
-    RouteNotFound { request_id: Uuid },
-    MethodNotAllowed { request_id: Uuid },
-    Internal { request_id: Uuid },
+    BadRequest {
+        request_id: Uuid,
+        message: &'static str,
+    },
+    RoomNotFound {
+        request_id: Uuid,
+    },
+    MemberNotFound {
+        request_id: Uuid,
+    },
+    RouteNotFound {
+        request_id: Uuid,
+    },
+    MethodNotAllowed {
+        request_id: Uuid,
+    },
+    Internal {
+        request_id: Uuid,
+    },
 }
 
 impl ApiError {
     fn parts(&self) -> (StatusCode, &'static str, &'static str, Uuid) {
         match self {
+            Self::BadRequest {
+                request_id,
+                message,
+            } => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_REQUEST",
+                message,
+                *request_id,
+            ),
+            Self::RoomNotFound { request_id } => (
+                StatusCode::NOT_FOUND,
+                "ROOM_NOT_FOUND",
+                "会议不存在",
+                *request_id,
+            ),
+            Self::MemberNotFound { request_id } => (
+                StatusCode::NOT_FOUND,
+                "MEMBER_NOT_FOUND",
+                "成员不存在",
+                *request_id,
+            ),
             Self::RouteNotFound { request_id } => (
                 StatusCode::NOT_FOUND,
                 "ROUTE_NOT_FOUND",

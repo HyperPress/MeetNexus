@@ -23,7 +23,129 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /rooms:
+    post:
+      operationId: createRoom
+      summary: 创建会议
+      tags:
+        - 房间
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: 会议创建成功，创建者自动成为主持人
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomDetailsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+  /rooms/{room_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getRoom
+      summary: 查询会议及成员在线状态
+      tags:
+        - 房间
+      responses:
+        "200":
+          description: 查询成功
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomDetailsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/RoomNotFound"
+  /rooms/{room_id}/members:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: joinRoom
+      summary: 加入会议
+      tags:
+        - 房间
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRoomRequest"
+      responses:
+        "201":
+          description: 加入成功，返回本次会议中的成员编号
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMemberResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/RoomNotFound"
+  /rooms/{room_id}/members/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    delete:
+      operationId: leaveRoom
+      summary: 离开会议
+      tags:
+        - 房间
+      responses:
+        "204":
+          description: 已离开会议
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
+  /rooms/{room_id}/members/{member_id}/heartbeat:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: refreshRoomMemberPresence
+      summary: 刷新成员在线状态
+      description: 前端应定期调用；90 秒未刷新时该成员会从 Redis 在线集合过期。
+      tags:
+        - 房间
+      responses:
+        "204":
+          description: 在线状态已刷新
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
 components:
+  parameters:
+    RoomId:
+      name: room_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberId:
+      name: member_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   headers:
     RequestId:
       description: 本次请求的关联 ID
@@ -32,6 +154,33 @@ components:
         type: string
         format: uuid
   responses:
+    InvalidRequest:
+      description: 请求字段或路径参数无效
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RoomNotFound:
+      description: 会议不存在
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MemberNotFound:
+      description: 成员不存在
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     RouteNotFound:
       description: 请求的接口不存在
       headers:
@@ -79,6 +228,112 @@ components:
         version:
           type: string
           example: 0.1.0
+    CreateRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - display_name
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+          example: 项目每周例会
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: 小明
+    JoinRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - display_name
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: 小红
+    Room:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RoomMember:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - display_name
+        - role
+        - joined_at
+        - online
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        role:
+          type: string
+          enum:
+            - host
+            - participant
+        joined_at:
+          type: string
+          format: date-time
+        online:
+          type: boolean
+    RoomDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - room
+        - members
+      properties:
+        room:
+          $ref: "#/components/schemas/Room"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomMember"
+    RoomDetailsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/RoomDetails"
+        request_id:
+          type: string
+          format: uuid
+    RoomMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/RoomMember"
+        request_id:
+          type: string
+          format: uuid
     HealthResponse:
       type: object
       additionalProperties: false

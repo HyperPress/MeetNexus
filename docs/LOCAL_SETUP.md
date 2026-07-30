@@ -70,3 +70,12 @@ Windows 本机 PostgreSQL 已运行，但创建 `meetnexus` 用户和数据库�
 ```
 
 在 `psql` 中创建项目用户和数据库；密码不得提交到 Git。
+
+创建数据库后安装与项目 SQLx 版本一致的命令行工具，并执行迁移：
+
+```powershell
+cargo install sqlx-cli --version 0.8.6 --no-default-features --features rustls,postgres
+sqlx migrate run --source services/api/migrations --database-url $env:DATABASE_URL
+```
+
+API 当前不会自动执行迁移。未完成迁移时，`/health` 仍可能返回成功，但房间接口会因缺少数据表而失败。

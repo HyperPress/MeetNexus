@@ -1,5 +1,9 @@
 use std::{collections::HashMap, net::SocketAddr};
 
+use api::{
+    http::rooms::RoomApiState,
+    infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -14,12 +18,29 @@ struct TestServer {
 
 impl TestServer {
     async fn start() -> Self {
+        Self::start_with_app(api::app()).await
+    }
+
+    async fn start_with_rooms() -> Self {
+        let database = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://meetnexus:test@127.0.0.1:1/meetnexus")
+            .expect("测试数据库地址应当有效");
+        let redis = redis::Client::open("redis://127.0.0.1:1").expect("测试 Redis 地址应当有效");
+        let state = RoomApiState {
+            rooms: PgRoomRepository::new(database),
+            presence: RedisPresenceRepository::new(redis),
+        };
+
+        Self::start_with_app(api::app_with_rooms(state)).await
+    }
+
+    async fn start_with_app(app: axum::Router) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("应当能够绑定测试端口");
         let address = listener.local_addr().expect("测试端口应当存在");
         let task = tokio::spawn(async move {
-            axum::serve(listener, api::app())
+            axum::serve(listener, app)
                 .await
                 .expect("测试服务器应当正常运行");
         });
@@ -28,15 +49,32 @@ impl TestServer {
     }
 
     async fn request(&self, method: &str, path: &str, request_id: Option<&str>) -> TestResponse {
+        self.request_json(method, path, request_id, None).await
+    }
+
+    async fn request_json(
+        &self,
+        method: &str,
+        path: &str,
+        request_id: Option<&str>,
+        body: Option<&str>,
+    ) -> TestResponse {
         let mut stream = TcpStream::connect(self.address)
             .await
             .expect("应当能够连接测试服务器");
         let request_id_header = request_id
             .map(|value| format!("X-Request-Id: {value}\r\n"))
             .unwrap_or_default();
+        let body = body.unwrap_or_default();
+        let content_type_header = if body.is_empty() {
+            String::new()
+        } else {
+            "Content-Type: application/json\r\n".to_owned()
+        };
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\n{request_id_header}Content-Length: 0\r\nConnection: close\r\n\r\n",
-            self.address
+            "{method} {path} HTTP/1.1\r\nHost: {}\r\n{request_id_header}{content_type_header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            self.address,
+            body.len(),
         );
 
         stream
@@ -189,5 +227,50 @@ async fn unsupported_method_returns_unified_error() {
     assert_eq!(response.status, 405);
     assert_eq!(response.body["error"]["code"], "METHOD_NOT_ALLOWED");
     assert_eq!(response.body["error"]["message"], "请求方法不受支持");
+    assert_eq!(response.body["request_id"], response.request_id());
+}
+
+#[tokio::test]
+async fn invalid_room_id_returns_unified_error() {
+    let server = TestServer::start_with_rooms().await;
+    let response = server.request("GET", "/rooms/not-a-uuid", None).await;
+
+    assert_eq!(response.status, 400);
+    assert_eq!(response.body["error"]["code"], "INVALID_REQUEST");
+    assert_eq!(
+        response.body["error"]["message"],
+        "会议号或成员编号格式无效"
+    );
+    assert_eq!(response.body["request_id"], response.request_id());
+}
+
+#[tokio::test]
+async fn invalid_room_json_returns_unified_error() {
+    let server = TestServer::start_with_rooms().await;
+    let response = server
+        .request_json("POST", "/rooms", None, Some("{}"))
+        .await;
+
+    assert_eq!(response.status, 400);
+    assert_eq!(response.body["error"]["code"], "INVALID_REQUEST");
+    assert_eq!(response.body["error"]["message"], "请求体格式无效");
+    assert_eq!(response.body["request_id"], response.request_id());
+}
+
+#[tokio::test]
+async fn unknown_room_fields_are_rejected() {
+    let server = TestServer::start_with_rooms().await;
+    let response = server
+        .request_json(
+            "POST",
+            "/rooms",
+            None,
+            Some(r#"{"title":"项目例会","display_name":"小明","unexpected":true}"#),
+        )
+        .await;
+
+    assert_eq!(response.status, 400);
+    assert_eq!(response.body["error"]["code"], "INVALID_REQUEST");
+    assert_eq!(response.body["error"]["message"], "请求体格式无效");
     assert_eq!(response.body["request_id"], response.request_id());
 }

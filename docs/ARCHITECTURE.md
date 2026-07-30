@@ -1,6 +1,8 @@
 # MeetNexus 架构
 
-## 服务职责
+> 本文描述目标架构。当前已经实现的范围以 `docs/STATUS.md` 为准，不能把目标链路视为已完成功能。
+
+## 目标服务职责
 
 | 服务 | 技术 | 职责 |
 | --- | --- | --- |
@@ -10,7 +12,7 @@
 | Redis | 本机数据库服务 | 在线成员、心跳、临时房间状态 |
 | Live777 | 本机 SFU 服务 | WHIP/WHEP WebRTC 音视频发布和订阅 |
 
-## 请求链路
+## 目标请求链路
 
 ```text
 浏览器 ── REST / WebSocket ──> Axum API ──> PostgreSQL / Redis
@@ -18,6 +20,13 @@
 浏览器 ── /media/whip/{stream_id} ──> Axum 鉴权与代理 ──> Live777
 浏览器 ── /media/whep/{stream_id} ──> Axum 鉴权与代理 ──> Live777
 ```
+
+## 当前实现边界
+
+- Web 已实现中文房间入口、本地表单校验和会前设备预览，尚未接入房间 HTTP API。
+- API 已实现 `/health` 和房间创建、查询、加入、离开、心跳接口，以及 PostgreSQL/Redis 适配器。
+- 当前没有 WebSocket、WHIP/WHEP 媒体代理、媒体授权、录制或回放实现。
+- Live777 配置目前只进行加载和格式校验，尚未被业务代码调用。
 
 ## 运行边界
 

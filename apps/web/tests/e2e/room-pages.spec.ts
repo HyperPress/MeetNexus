@@ -8,10 +8,10 @@ test.describe('MeetNexus 房间入口页面', () => {
       page.getByRole('heading', {
         level: 1,
       }),
-    ).toContainText('随时发起会议')
+    ).toContainText('先检查设备')
 
     await expect(
-      page.getByText('MeetNexus 提供中文多人视频会议体验。'),
+      page.getByText('当前版本提供中文房间入口、表单校验和会前设备预览。'),
     ).toBeVisible()
 
     const mainContent = page.getByRole('main')

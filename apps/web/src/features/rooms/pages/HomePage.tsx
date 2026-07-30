@@ -5,17 +5,17 @@ export function HomePage() {
         <div className="hero-content max-w-5xl flex-col gap-12 lg:flex-row">
           <div className="max-w-2xl">
             <div className="badge badge-primary badge-outline mb-5">
-              简单、清晰的多人视频会议
+              房间入口与设备检测原型
             </div>
 
             <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
-              随时发起会议，
-              <span className="text-primary">让沟通更简单</span>
+              先检查设备，
+              <span className="text-primary">为会议功能做好准备</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-8 text-base-content/70">
-              MeetNexus 提供中文多人视频会议体验。你可以创建新会议，
-              也可以使用会议号加入已有会议。
+              当前版本提供中文房间入口、表单校验和会前设备预览。
+              创建与加入会议的后端接口已经实现，前端接入和多人音视频仍在开发中。
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -35,23 +35,23 @@ export function HomePage() {
 
               <div className="mt-4 space-y-4">
                 <div className="rounded-box bg-base-200 p-4">
-                  <p className="font-semibold">1. 创建会议</p>
+                  <p className="font-semibold">1. 填写房间信息</p>
                   <p className="mt-1 text-sm text-base-content/70">
-                    填写会议主题和你的显示名称。
+                    在创建或加入页面检查会议主题、会议号和显示名称。
                   </p>
                 </div>
 
                 <div className="rounded-box bg-base-200 p-4">
-                  <p className="font-semibold">2. 分享会议号</p>
+                  <p className="font-semibold">2. 检查本地设备</p>
                   <p className="mt-1 text-sm text-base-content/70">
-                    将会议号发送给需要参会的成员。
+                    预览摄像头、麦克风和屏幕分享效果。
                   </p>
                 </div>
 
                 <div className="rounded-box bg-base-200 p-4">
-                  <p className="font-semibold">3. 加入会议</p>
+                  <p className="font-semibold">3. 等待完整接入</p>
                   <p className="mt-1 text-sm text-base-content/70">
-                    参会成员输入会议号即可加入。
+                    房间接口和多人音视频接入完成后，才可进行真实会议。
                   </p>
                 </div>
               </div>

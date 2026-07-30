@@ -3,29 +3,76 @@ import { PreJoinPage } from '../features/meeting/pages/PreJoinPage'
 import { CreateRoomPage } from '../features/rooms/pages/CreateRoomPage'
 import { HomePage } from '../features/rooms/pages/HomePage'
 import { JoinRoomPage } from '../features/rooms/pages/JoinRoomPage'
+import { RoomPage } from '../features/rooms/pages/RoomPage'
+import { UuidSchema } from '../schemas/room'
 
-type RouteName = 'home' | 'create' | 'join' | 'preview'
+type Route =
+  | { name: 'home' }
+  | { name: 'create' }
+  | { name: 'join' }
+  | { name: 'preview' }
+  | { name: 'room'; roomId: string }
+  | { name: 'notFound' }
 
-function readRoute(): RouteName {
-  const route = window.location.hash.replace(/^#\/?/, '')
+function readRoute(): Route {
+  const path = window.location.hash.replace(/^#\/?/, '')
 
-  if (route === 'create') {
-    return 'create'
+  if (path === '') {
+    return { name: 'home' }
   }
 
-  if (route === 'join') {
-    return 'join'
+  if (path === 'create') {
+    return { name: 'create' }
   }
 
-  if (route === 'preview') {
-    return 'preview'
+  if (path === 'join') {
+    return { name: 'join' }
   }
 
-  return 'home'
+  if (path === 'preview') {
+    return { name: 'preview' }
+  }
+
+  const roomMatch = /^rooms\/([^/]+)$/.exec(path)
+  const roomId = roomMatch?.[1]
+
+  if (
+    roomId !== undefined &&
+    UuidSchema.safeParse(roomId).success
+  ) {
+    return {
+      name: 'room',
+      roomId,
+    }
+  }
+
+  return { name: 'notFound' }
+}
+
+function NotFoundPage() {
+  return (
+    <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <section className="card w-full max-w-lg bg-base-100 shadow-xl">
+        <div className="card-body text-center">
+          <h1 className="text-3xl font-bold">页面不存在</h1>
+
+          <p className="text-base-content/70">
+            请检查访问地址，或返回 MeetNexus 首页。
+          </p>
+
+          <div className="card-actions mt-4 justify-center">
+            <a className="btn btn-primary" href="#/">
+              返回首页
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
 }
 
 export function AppRouter() {
-  const [route, setRoute] = useState<RouteName>(readRoute)
+  const [route, setRoute] = useState<Route>(readRoute)
 
   useEffect(() => {
     function handleHashChange() {
@@ -41,16 +88,24 @@ export function AppRouter() {
 
   let page = <HomePage />
 
-  if (route === 'create') {
+  if (route.name === 'create') {
     page = <CreateRoomPage />
   }
 
-  if (route === 'join') {
+  if (route.name === 'join') {
     page = <JoinRoomPage />
   }
 
-  if (route === 'preview') {
+  if (route.name === 'preview') {
     page = <PreJoinPage />
+  }
+
+  if (route.name === 'room') {
+    page = <RoomPage roomId={route.roomId} />
+  }
+
+  if (route.name === 'notFound') {
+    page = <NotFoundPage />
   }
 
   return (

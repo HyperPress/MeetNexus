@@ -60,6 +60,7 @@ Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`；禁止提交真实�
 4. 在另一个终端启动前端：`npm run dev --prefix apps/web`。
 
 当前 API 健康检查地址为 `http://localhost:8080/health`；前端开发地址由 Vite 输出。
+前端开发服务器会把同源的 `/health` 与 `/rooms` 请求代理到 `http://127.0.0.1:8080`，因此进行房间创建、查询、加入、离开和心跳联调时，API 必须使用当前约定端口启动。
 
 ## PostgreSQL 数据库初始化
 

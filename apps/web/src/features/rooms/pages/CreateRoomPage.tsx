@@ -1,30 +1,68 @@
 import { useState, type FormEvent } from 'react'
+import { getApiErrorMessage } from '../../../lib/api/httpClient'
+import { CreateRoomRequestSchema } from '../../../schemas/room'
+import { createRoom } from '../api/roomApi'
+import { saveRoomSession } from '../session/roomSession'
 
 export function CreateRoomPage() {
   const [meetingTitle, setMeetingTitle] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [feedback, setFeedback] = useState<string | null>(null)
-  const [hasError, setHasError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    null,
+  )
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault()
 
-    if (meetingTitle.trim() === '') {
-      setHasError(true)
-      setFeedback('请输入会议主题。')
+    if (isSubmitting) {
       return
     }
 
-    if (displayName.trim() === '') {
-      setHasError(true)
-      setFeedback('请输入你的显示名称。')
+    const validationResult = CreateRoomRequestSchema.safeParse({
+      title: meetingTitle,
+      display_name: displayName,
+    })
+
+    if (!validationResult.success) {
+      setErrorMessage(
+        validationResult.error.issues[0]?.message ??
+          '请检查会议信息。',
+      )
       return
     }
 
-    setHasError(false)
-    setFeedback(
-      '表单已通过本地校验。房间接口尚未接入，因此当前不会真正创建会议。',
-    )
+    setIsSubmitting(true)
+    setErrorMessage(null)
+
+    try {
+      const response = await createRoom(validationResult.data)
+      const hostMember = response.data.members.find(
+        (member) => member.role === 'host',
+      )
+
+      if (hostMember === undefined) {
+        setErrorMessage(
+          `服务器响应中缺少主持人成员。（请求编号：${response.request_id}）`,
+        )
+        return
+      }
+
+      saveRoomSession({
+        roomId: response.data.room.id,
+        memberId: hostMember.id,
+        displayName: hostMember.display_name,
+        role: hostMember.role,
+      })
+
+      window.location.hash = `#/rooms/${response.data.room.id}`
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -39,7 +77,7 @@ export function CreateRoomPage() {
             <h1 className="mt-4 text-3xl font-bold">创建会议</h1>
 
             <p className="mt-2 text-base-content/70">
-              填写会议信息，后续可邀请其他成员加入。
+              填写会议信息，创建成功后你将自动成为主持人。
             </p>
           </div>
 
@@ -51,6 +89,7 @@ export function CreateRoomPage() {
 
               <input
                 className="input w-full"
+                disabled={isSubmitting}
                 id="meeting-title"
                 maxLength={80}
                 onChange={(event) => setMeetingTitle(event.target.value)}
@@ -71,6 +110,7 @@ export function CreateRoomPage() {
 
               <input
                 className="input w-full"
+                disabled={isSubmitting}
                 id="creator-name"
                 maxLength={40}
                 onChange={(event) => setDisplayName(event.target.value)}
@@ -84,18 +124,22 @@ export function CreateRoomPage() {
               </p>
             </fieldset>
 
-            {feedback !== null && (
+            {errorMessage !== null && (
               <div
                 aria-live="polite"
-                className={hasError ? 'alert alert-error' : 'alert alert-info'}
-                role={hasError ? 'alert' : 'status'}
+                className="alert alert-error"
+                role="alert"
               >
-                <span>{feedback}</span>
+                <span>{errorMessage}</span>
               </div>
             )}
 
-            <button className="btn btn-primary w-full" type="submit">
-              创建会议
+            <button
+              className="btn btn-primary w-full"
+              disabled={isSubmitting}
+              type="submit"
+            >
+              {isSubmitting ? '正在创建会议……' : '创建会议'}
             </button>
           </form>
         </div>

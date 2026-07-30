@@ -1,30 +1,77 @@
 import { useState, type FormEvent } from 'react'
+import { getApiErrorMessage } from '../../../lib/api/httpClient'
+import {
+  JoinRoomRequestSchema,
+  UuidSchema,
+} from '../../../schemas/room'
+import { joinRoom } from '../api/roomApi'
+import { saveRoomSession } from '../session/roomSession'
 
 export function JoinRoomPage() {
   const [roomId, setRoomId] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [feedback, setFeedback] = useState<string | null>(null)
-  const [hasError, setHasError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    null,
+  )
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault()
 
-    if (roomId.trim() === '') {
-      setHasError(true)
-      setFeedback('请输入会议号。')
+    if (isSubmitting) {
       return
     }
 
-    if (displayName.trim() === '') {
-      setHasError(true)
-      setFeedback('请输入你的显示名称。')
+    const normalizedRoomId = roomId.trim()
+
+    if (normalizedRoomId === '') {
+      setErrorMessage('请输入会议号。')
       return
     }
 
-    setHasError(false)
-    setFeedback(
-      '表单已通过本地校验。房间接口尚未接入，因此当前不会真正加入会议。',
-    )
+    const roomIdResult = UuidSchema.safeParse(normalizedRoomId)
+
+    if (!roomIdResult.success) {
+      setErrorMessage('请输入有效的会议号。')
+      return
+    }
+
+    const requestResult = JoinRoomRequestSchema.safeParse({
+      display_name: displayName,
+    })
+
+    if (!requestResult.success) {
+      setErrorMessage(
+        requestResult.error.issues[0]?.message ??
+          '请检查显示名称。',
+      )
+      return
+    }
+
+    setIsSubmitting(true)
+    setErrorMessage(null)
+
+    try {
+      const response = await joinRoom(
+        roomIdResult.data,
+        requestResult.data,
+      )
+
+      saveRoomSession({
+        roomId: roomIdResult.data,
+        memberId: response.data.id,
+        displayName: response.data.display_name,
+        role: response.data.role,
+      })
+
+      window.location.hash = `#/rooms/${roomIdResult.data}`
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -39,7 +86,7 @@ export function JoinRoomPage() {
             <h1 className="mt-4 text-3xl font-bold">加入会议</h1>
 
             <p className="mt-2 text-base-content/70">
-              输入会议号和你的显示名称，准备加入会议。
+              输入会议号和你的显示名称，加入已有会议。
             </p>
           </div>
 
@@ -52,6 +99,7 @@ export function JoinRoomPage() {
               <input
                 autoComplete="off"
                 className="input w-full"
+                disabled={isSubmitting}
                 id="room-id"
                 maxLength={64}
                 onChange={(event) => setRoomId(event.target.value)}
@@ -61,7 +109,7 @@ export function JoinRoomPage() {
               />
 
               <p className="label">
-                会议号由会议创建者提供。
+                会议号由会议创建者提供，格式为 UUID。
               </p>
             </fieldset>
 
@@ -72,6 +120,7 @@ export function JoinRoomPage() {
 
               <input
                 className="input w-full"
+                disabled={isSubmitting}
                 id="participant-name"
                 maxLength={40}
                 onChange={(event) => setDisplayName(event.target.value)}
@@ -85,18 +134,22 @@ export function JoinRoomPage() {
               </p>
             </fieldset>
 
-            {feedback !== null && (
+            {errorMessage !== null && (
               <div
                 aria-live="polite"
-                className={hasError ? 'alert alert-error' : 'alert alert-info'}
-                role={hasError ? 'alert' : 'status'}
+                className="alert alert-error"
+                role="alert"
               >
-                <span>{feedback}</span>
+                <span>{errorMessage}</span>
               </div>
             )}
 
-            <button className="btn btn-primary w-full" type="submit">
-              加入会议
+            <button
+              className="btn btn-primary w-full"
+              disabled={isSubmitting}
+              type="submit"
+            >
+              {isSubmitting ? '正在加入会议……' : '加入会议'}
             </button>
           </form>
         </div>

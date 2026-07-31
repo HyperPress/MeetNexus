@@ -330,7 +330,108 @@ test.describe('MeetNexus 房间入口页面', () => {
       }),
     ).toBeVisible()
     await expect(
-      page.getByText(/当前浏览器没有该房间的成员身份/),
+      page.getByText(
+        '当前浏览器没有该房间的成员身份。你可以查看房间，但不会发送在线心跳；如需参会，请通过加入会议页面进入。',
+      ),
+    ).toBeVisible()
+  })
+
+  test('房间成员可以控制本地音视频设备', async ({
+    page,
+  }) => {
+    await mockRoomApi(page)
+    await page.goto('/#/create')
+
+    await page
+      .getByLabel('会议主题')
+      .fill('MeetNexus 项目例会')
+    await page
+      .getByLabel('你的显示名称')
+      .fill('测试主持人')
+
+    await page
+      .getByRole('button', {
+        name: '创建会议',
+      })
+      .click()
+
+    await expect(page).toHaveURL(
+      new RegExp(`#\\/rooms\\/${roomId}$`),
+    )
+
+    await page
+      .getByRole('button', {
+        name: '启动音视频设备',
+      })
+      .click()
+
+    await expect(
+      page.getByLabel('本地摄像头预览'),
+    ).toBeVisible()
+
+    await expect(
+      page.getByRole('button', {
+        name: '关闭摄像头',
+      }),
+    ).toBeVisible()
+
+    await expect(
+      page.getByRole('button', {
+        name: '关闭麦克风',
+      }),
+    ).toBeVisible()
+
+    await page
+      .getByRole('button', {
+        name: '关闭摄像头',
+      })
+      .click()
+
+    await expect(
+      page.getByRole('button', {
+        name: '打开摄像头',
+      }),
+    ).toBeVisible()
+
+    await page
+      .getByRole('button', {
+        name: '释放音视频设备',
+      })
+      .click()
+
+    await expect(
+      page.getByRole('button', {
+        name: '启动音视频设备',
+      }),
+    ).toBeVisible()
+
+    await expect(page.getByRole('status')).toContainText(
+      '摄像头和麦克风已释放',
+    )
+  })
+
+  test('没有房间成员身份时禁用媒体控制', async ({
+    page,
+  }) => {
+    await mockRoomApi(page)
+    await page.goto(`/#/rooms/${roomId}`)
+
+    await expect(
+      page.getByRole('button', {
+        name: '启动音视频设备',
+      }),
+    ).toBeDisabled()
+
+    await expect(
+      page.getByRole('button', {
+        name: '共享屏幕',
+      }),
+    ).toBeDisabled()
+
+    await expect(
+      page.getByText(
+        '当前浏览器没有该房间的成员身份，不能使用会议媒体控制。',
+      ),
     ).toBeVisible()
   })
 

@@ -101,6 +101,18 @@ npm run build --prefix apps/web
 
 此脚本只在 Windows 的“专用网络”配置文件中放行 TCP 80 和 443；不放行 API 的 8080、Vite 的 5173、PostgreSQL、Redis 或 Live777 的管理 HTTP 端口。若将来需要外网访问，应使用受控的公网入口和域名签发的可信 HTTPS 证书，并另行配置路由器端口映射、Live777 UDP 端口和 TURN；不要仅依赖本机内部 CA。
 
+## 临时外网访问（ngrok）
+
+ngrok 可以在不配置路由器端口映射的情况下，将公网 HTTPS 请求转发至本机 Caddy。它只转发网页、API、WebSocket 和 WHIP/WHEP 信令，**不会转发 Live777 的 WebRTC UDP 媒体端口**；因此它适合外网演示和页面联调，但外网音视频能否建立仍取决于 Live777 的公网 UDP 可达性和 TURN。
+
+已完成 `ngrok config add-authtoken` 后，保持 Caddy、API、Memurai 和 Live777 运行，在新终端执行：
+
+```powershell
+.\scripts\start-ngrok.ps1 -NgrokPath "C:\Users\14534\Downloads\ngrok-v3-stable-windows-386\ngrok.exe"
+```
+
+脚本仅为 ngrok 子进程清除 HTTP(S) 代理环境变量，避免免费账户出现 `ERR_NGROK_9009`；不会修改 Windows 系统代理和 ngrok 的认证配置。终端显示的 `https://*.ngrok-free.dev` 即可分享给外网用户，且由 ngrok 提供浏览器可识别的 HTTPS 证书。免费随机地址通常会在隧道重新启动后改变；链接公开可访问，不应分享包含敏感数据的会议内容。
+
 当前 API 存活检查地址为 `http://localhost:8080/health`；依赖就绪检查地址为 `http://localhost:8080/ready`，后者会验证 PostgreSQL、Redis 和 Live777，任一不可用时返回 503。前端开发地址由 Vite 输出。
 前端开发服务器会把同源的 `/health` 与 `/rooms` 请求代理到 `http://127.0.0.1:8080`，因此进行房间创建、查询、加入、离开和心跳联调时，API 必须使用当前约定端口启动。
 

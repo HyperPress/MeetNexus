@@ -41,6 +41,12 @@
 - 录制存储根目录通过 `RECORDING_STORAGE_ROOT` 配置；该目录不得以静态文件服务、共享目录或 Live777 地址直接暴露给浏览器。
 - API 应通过项目根目录的 `scripts/start-api.ps1` 启动；脚本只加载允许的本机配置，并把相对录制目录转换为绝对路径，避免服务工作目录影响回放文件读取。
 
+## 本机 HTTPS 部署边界
+
+- 本机部署时，Caddy 监听 TCP 80/443，提供 `apps/web/dist` 中的静态前端，并将 `/health`、`/ready`、`/rooms/*` 与 `/media/*` 同源反向代理到 `127.0.0.1:8080`。API 不得因部署而改为监听局域网或公网地址。
+- Caddy 负责 HTTPS、静态页面、API 和 WebSocket 转发；WebRTC 的实际 UDP 媒体传输仍由 Live777 负责，反向代理不会替代 Live777 UDP 端口、NAT 配置或 TURN。
+- 本机及局域网测试使用 Caddy 内部 CA；其他设备只有在显式信任本地根证书后才可使用 HTTPS 媒体权限。面向公网的可信 HTTPS 必须使用受控公网入口和域名证书，不能复用内部 CA。
+
 ## 代码分层
 
 - Web 使用 `app → features → lib` 的依赖方向：应用装配使用业务功能，业务功能通过公共基础设施访问 API 和媒体能力。

@@ -63,6 +63,44 @@ Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至�
 3. 启动 API：`./scripts/start-api.ps1`。该脚本只读取 `.env` 中的允许配置项，并将相对 `RECORDING_STORAGE_ROOT` 解析为绝对路径，避免因 API 工作目录不同而无法读取 Live777 录制文件。
 4. 在另一个终端启动前端：`npm run dev --prefix apps/web`。
 
+## 本机 HTTPS 部署（Caddy）
+
+开发模式使用 Vite；若要让本机作为局域网会议入口，应改用 Caddy 提供前端生产文件和同源 API 反向代理。Caddy 仅代理 HTTP(S)、WebSocket 和 WHIP/WHEP 信令；Live777 的 WebRTC UDP 媒体端口仍由 Live777 自己处理。
+
+首次部署前，将 Caddy 官方 Windows 发布包解压到 `%USERPROFILE%\.local\caddy\`，使可执行文件路径为 `%USERPROFILE%\.local\caddy\caddy.exe`。然后依次执行：
+
+```powershell
+# 1. 构建前端生产文件
+npm run build --prefix apps/web
+
+# 2. 在单独终端启动 PostgreSQL、Memurai、Live777 和 API
+.\scripts\start-local-media-services.ps1
+.\scripts\start-api.ps1
+
+# 3. 在另一个终端启动 HTTPS 入口
+.\scripts\start-caddy.ps1
+```
+
+启动脚本会自动识别默认网络出口的局域网 IPv4，并提供 `https://localhost` 和 `https://<局域网-IP>`。API 仍固定监听 `127.0.0.1:8080`，因此不能直接通过 `8080` 对外访问。
+
+本机和局域网部署使用 Caddy 的内部 CA 签发证书。当前 Windows 设备会自动尝试信任该 CA；其他电脑或手机必须先信任 Caddy 本地根证书，才能通过 HTTPS 使用摄像头和麦克风。根证书通常位于 `%APPDATA%\Caddy\pki\authorities\local\root.crt`。不要在不可信网络中忽略浏览器证书警告。
+
+若 Caddy 未能自动导入 Windows 根证书，可在启动 Caddy 后执行：
+
+```powershell
+.\scripts\trust-caddy-local-ca.ps1
+```
+
+该脚本只信任当前电脑上的本地 CA，不会修改系统服务。手机和其他电脑需要由设备所有者从上述路径导入同一份根证书并显式信任；iPhone/iPad 还需要在“设置 → 通用 → 关于本机 → 证书信任设置”中开启完全信任。
+
+为了让同一局域网设备访问，需以“管理员身份运行”的 PowerShell 执行一次：
+
+```powershell
+.\scripts\allow-caddy-firewall.ps1
+```
+
+此脚本只在 Windows 的“专用网络”配置文件中放行 TCP 80 和 443；不放行 API 的 8080、Vite 的 5173、PostgreSQL、Redis 或 Live777 的管理 HTTP 端口。若将来需要外网访问，应使用受控的公网入口和域名签发的可信 HTTPS 证书，并另行配置路由器端口映射、Live777 UDP 端口和 TURN；不要仅依赖本机内部 CA。
+
 当前 API 存活检查地址为 `http://localhost:8080/health`；依赖就绪检查地址为 `http://localhost:8080/ready`，后者会验证 PostgreSQL、Redis 和 Live777，任一不可用时返回 503。前端开发地址由 Vite 输出。
 前端开发服务器会把同源的 `/health` 与 `/rooms` 请求代理到 `http://127.0.0.1:8080`，因此进行房间创建、查询、加入、离开和心跳联调时，API 必须使用当前约定端口启动。
 

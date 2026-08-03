@@ -1,0 +1,31 @@
+# MeetNexus 本机 HTTPS 反向代理。
+#
+# 启动脚本会注入 MEETNEXUS_LAN_IP 和 MEETNEXUS_WEB_ROOT，禁止将 API
+# 直接监听到局域网或公网。Caddy 是浏览器访问本机部署的唯一 HTTP(S) 入口。
+
+https://localhost, https://{$MEETNEXUS_LAN_IP} {
+	# 本机或局域网测试使用 Caddy 的本地 CA。局域网内的其他设备必须信任该 CA，
+	# 否则浏览器会拒绝 HTTPS，摄像头和麦克风也无法正常授权。
+	tls internal
+
+	encode zstd gzip
+
+	# route 保证先匹配 API，再回退静态入口，避免 /health 等 API 被 React
+	# 的 SPA 回退逻辑错误处理。
+	route {
+		# 业务 API、WebSocket、WHIP/WHEP 和录制回放均交给 Axum；Caddy 会自动
+		# 处理 WebSocket 升级，不需要额外添加 Upgrade/Connection 请求头。
+		@api path /health /ready /rooms /rooms/* /media /media/*
+		reverse_proxy @api 127.0.0.1:8080
+
+		# React Hash 路由和首次刷新均回退到入口页。
+		root * "{$MEETNEXUS_WEB_ROOT}"
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# HTTP 仅用于把误输入的地址升级到 HTTPS，不提供明文页面或 API。
+http://localhost, http://{$MEETNEXUS_LAN_IP} {
+	redir https://{host}{uri} permanent
+}

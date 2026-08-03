@@ -75,12 +75,16 @@ npm run dev --prefix apps/web
 完整的软件要求、环境变量和启动顺序见
 [本机运行说明](docs/LOCAL_SETUP.md)。
 
+部署到 Linux ECS 并向公网提供 HTTPS 服务时，参见
+[ECS 公网部署说明](docs/ECS_DEPLOY.md)。
+
 ## 项目文档
 
 - [架构设计](docs/ARCHITECTURE.md)
 - [项目进度](docs/STATUS.md)
 - [OpenAPI 契约](docs/openapi.yaml)
 - [项目手册](docs/PROJECT_MANUAL.md)
+- [ECS 公网部署说明](docs/ECS_DEPLOY.md)
 
 ## 协作
 

@@ -34,6 +34,8 @@
 ## 运行边界
 
 - Web、API、PostgreSQL、Redis 和 Live777 都直接运行在开发机上，不使用 Docker 或 Compose。
+- 公网 ECS 部署时，Nginx 统一承接 HTTPS、静态 Web、同源 REST/WebSocket 和媒体代理；API、Live777、PostgreSQL 与 Redis 仍仅监听服务器回环地址。部署细节见 `docs/ECS_DEPLOY.md`。
+- Live777 的 WebRTC 媒体传输需要云防火墙允许服务器临时 UDP 端口范围；当前运行环境使用 `32768/60999`。若严格 NAT 网络无法建立媒体连接，应单独评估 TURN 中继，不能将 Live777 HTTP 端口直接暴露到公网。
 - 浏览器仅访问 MeetNexus 的同源 API 与媒体地址；不直接依赖 Live777 内网地址或 Token。
 - API 在代理媒体请求前检查用户、房间和流之间的权限关系。
 - 当前成员身份由服务端签发的 8 小时 JWT 房间会话令牌确认；令牌绑定房间与成员，成员操作和媒体操作均须通过 `Authorization: Bearer` 传递。令牌不写入 URL、日志或持久化存储；没有账号体系时，它不代表跨设备登录态。

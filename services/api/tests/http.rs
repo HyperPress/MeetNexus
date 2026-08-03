@@ -2,8 +2,13 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use api::{
     domain::MemberRole,
-    http::{auth::SessionTokenService, events::RoomEventHub, rooms::RoomApiState},
-    infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
+    http::{
+        auth::SessionTokenService, events::RoomEventHub, health::ReadinessApiState,
+        rooms::RoomApiState,
+    },
+    infrastructure::{
+        live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
+    },
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -37,6 +42,18 @@ impl TestServer {
         };
 
         Self::start_with_app(api::app_with_rooms(state)).await
+    }
+
+    async fn start_with_unready_dependencies() -> Self {
+        let database = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://meetnexus:test@127.0.0.1:1/meetnexus")
+            .expect("测试数据库地址应当有效");
+        let redis = redis::Client::open("redis://127.0.0.1:1").expect("测试 Redis 地址应当有效");
+        let live777 =
+            Live777Client::new("http://127.0.0.1:1", None).expect("测试 Live777 地址应当有效");
+        let state = ReadinessApiState::new(database, redis, live777);
+
+        Self::start_with_app(api::http::router_with_readiness(state)).await
     }
 
     async fn start_with_app(app: axum::Router) -> Self {
@@ -203,6 +220,20 @@ async fn health_returns_contract_response_and_generated_request_id() {
     assert_eq!(response.body["data"]["status"], "ok");
     assert_eq!(response.body["data"]["service"], "meetnexus-api");
     assert_eq!(response.body["data"]["version"], "0.1.0");
+}
+
+#[tokio::test]
+async fn readiness_returns_service_unavailable_when_dependencies_cannot_connect() {
+    let server = TestServer::start_with_unready_dependencies().await;
+    let response = server.request("GET", "/ready", None).await;
+
+    assert_eq!(response.status, 503);
+    assert_eq!(response.body["error"]["code"], "DEPENDENCY_UNAVAILABLE");
+    assert_eq!(
+        response.body["error"]["message"],
+        "服务依赖暂未就绪，请稍后重试"
+    );
+    assert_eq!(response.body["request_id"], response.request_id());
 }
 
 #[tokio::test]

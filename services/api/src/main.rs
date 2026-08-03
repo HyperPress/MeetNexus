@@ -2,7 +2,10 @@ use std::process;
 
 use api::{
     config::AppConfig,
-    http::{auth::SessionTokenService, events::RoomEventHub, rooms::RoomApiState},
+    http::{
+        auth::SessionTokenService, events::RoomEventHub, health::ReadinessApiState,
+        rooms::RoomApiState,
+    },
     infrastructure::{
         live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
     },
@@ -54,8 +57,8 @@ async fn main() {
         process::exit(1);
     }
     let state = RoomApiState {
-        rooms: PgRoomRepository::new(database),
-        presence: RedisPresenceRepository::new(redis),
+        rooms: PgRoomRepository::new(database.clone()),
+        presence: RedisPresenceRepository::new(redis.clone()),
         session_tokens: SessionTokenService::new(&config.auth_jwt_secret),
         event_hub: RoomEventHub::default(),
     };
@@ -65,14 +68,19 @@ async fn main() {
             process::exit(1);
         });
     let media_state = api::http::media::MediaApiState {
-        live777,
+        live777: live777.clone(),
         rooms: state.rooms.clone(),
         session_tokens: state.session_tokens.clone(),
         event_hub: state.event_hub.clone(),
     };
 
-    if let Err(error) =
-        axum::serve(listener, api::app_with_rooms_and_media(state, media_state)).await
+    let readiness_state = ReadinessApiState::new(database, redis, live777);
+
+    if let Err(error) = axum::serve(
+        listener,
+        api::app_with_rooms_media_and_readiness(state, media_state, readiness_state),
+    )
+    .await
     {
         tracing::error!(
             request_id = "-",

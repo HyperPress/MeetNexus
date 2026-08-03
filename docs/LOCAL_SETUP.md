@@ -59,7 +59,7 @@ Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至�
 3. 启动 API：`cargo run --manifest-path services/api/Cargo.toml`。
 4. 在另一个终端启动前端：`npm run dev --prefix apps/web`。
 
-当前 API 健康检查地址为 `http://localhost:8080/health`；前端开发地址由 Vite 输出。
+当前 API 存活检查地址为 `http://localhost:8080/health`；依赖就绪检查地址为 `http://localhost:8080/ready`，后者会验证 PostgreSQL、Redis 和 Live777，任一不可用时返回 503。前端开发地址由 Vite 输出。
 前端开发服务器会把同源的 `/health` 与 `/rooms` 请求代理到 `http://127.0.0.1:8080`，因此进行房间创建、查询、加入、离开和心跳联调时，API 必须使用当前约定端口启动。
 
 ## PostgreSQL 数据库初始化
@@ -79,4 +79,4 @@ cargo install sqlx-cli --version 0.8.6 --no-default-features --features rustls,p
 sqlx migrate run --source services/api/migrations --database-url $env:DATABASE_URL
 ```
 
-API 当前不会自动执行迁移。未完成迁移时，`/health` 仍可能返回成功，但房间接口会因缺少数据表而失败。
+API 当前不会自动执行迁移。未完成迁移时，`/health` 仍可能返回成功，但 `/ready` 和房间接口会因 PostgreSQL 查询失败而不能就绪或正常工作。

@@ -75,6 +75,16 @@ impl Live777Client {
             .await
     }
 
+    /// 确认 Live777 的 HTTP 服务可连接并能返回有效响应。
+    /// 根路径通常返回 404，这仍表示 SFU 已就绪，因此仅将 5xx 视为不可用。
+    pub async fn probe(&self) -> Result<(), Live777Error> {
+        let response = self.request("GET", "", &[]).await?;
+        if response.status.is_server_error() {
+            return Err(Live777Error::InvalidResponse);
+        }
+        Ok(())
+    }
+
     async fn request(
         &self,
         method: &str,

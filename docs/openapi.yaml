@@ -23,6 +23,25 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /ready:
+    get:
+      operationId: getReadiness
+      summary: 检查 API 及其依赖是否就绪
+      description: 检查 MeetNexus API 可连接 PostgreSQL、Redis 和 Live777。任一依赖不可用时返回 503；`/health` 仍仅用于存活探测。
+      tags:
+        - 系统
+      responses:
+        "200":
+          description: API 及全部依赖均已就绪
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
   /rooms:
     post:
       operationId: createRoom
@@ -508,6 +527,15 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    DependencyUnavailable:
+      description: PostgreSQL、Redis 或 Live777 尚未就绪
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     HealthData:
       type: object
@@ -528,6 +556,31 @@ components:
         version:
           type: string
           example: 0.1.0
+    ReadinessData:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - dependencies
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+        dependencies:
+          type: object
+          additionalProperties: false
+          required:
+            - postgresql
+            - redis
+            - live777
+          properties:
+            postgresql:
+              type: boolean
+            redis:
+              type: boolean
+            live777:
+              type: boolean
     CreateRoomRequest:
       type: object
       additionalProperties: false
@@ -728,6 +781,18 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/HealthData"
+        request_id:
+          type: string
+          format: uuid
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/ReadinessData"
         request_id:
           type: string
           format: uuid

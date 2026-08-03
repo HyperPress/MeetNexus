@@ -34,6 +34,9 @@ pub enum ApiError {
     MediaServiceUnavailable {
         request_id: Uuid,
     },
+    DependencyUnavailable {
+        request_id: Uuid,
+    },
     RouteNotFound {
         request_id: Uuid,
     },
@@ -91,6 +94,12 @@ impl ApiError {
                 StatusCode::BAD_GATEWAY,
                 "MEDIA_SERVICE_UNAVAILABLE",
                 "媒体服务暂时不可用，请稍后重试",
+                *request_id,
+            ),
+            Self::DependencyUnavailable { request_id } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "DEPENDENCY_UNAVAILABLE",
+                "服务依赖暂未就绪，请稍后重试",
                 *request_id,
             ),
             Self::RouteNotFound { request_id } => (

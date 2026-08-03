@@ -11,6 +11,7 @@ const RoomSessionSchema = z.strictObject({
   memberId: UuidSchema,
   displayName: z.string().min(1),
   role: RoomRoleSchema,
+  sessionToken: z.string().min(1),
 })
 
 export type RoomSession = z.infer<typeof RoomSessionSchema>

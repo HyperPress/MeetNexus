@@ -44,7 +44,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoomDetailsResponse"
+                $ref: "#/components/schemas/CreateRoomResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
   /rooms/{room_id}:
@@ -92,7 +92,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoomMemberResponse"
+                $ref: "#/components/schemas/JoinRoomResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "404":
@@ -103,6 +103,8 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     delete:
       operationId: leaveRoom
+      security:
+        - BearerAuth: []
       summary: 离开会议
       tags:
         - 房间
@@ -111,6 +113,10 @@ paths:
           description: 已离开会议
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
   /rooms/{room_id}/members/{member_id}/heartbeat:
@@ -119,6 +125,8 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     post:
       operationId: refreshRoomMemberPresence
+      security:
+        - BearerAuth: []
       summary: 刷新成员在线状态
       description: 前端应定期调用；90 秒未刷新时该成员会从 Redis 在线集合过期。
       tags:
@@ -128,15 +136,20 @@ paths:
           description: 在线状态已刷新
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
   /media/whip/{room_id}/{member_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
       - $ref: "#/components/parameters/MemberId"
-      - $ref: "#/components/parameters/CurrentMemberId"
     post:
       operationId: publishRoomMedia
+      security:
+        - BearerAuth: []
       summary: 发布成员的音视频流
       description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员身份与发布者一致后，将请求代理至 Live777 WHIP。
       tags:
@@ -159,6 +172,8 @@ paths:
                 type: string
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
@@ -167,9 +182,10 @@ paths:
     parameters:
       - $ref: "#/components/parameters/RoomId"
       - $ref: "#/components/parameters/MemberId"
-      - $ref: "#/components/parameters/CurrentMemberId"
     post:
       operationId: subscribeRoomMedia
+      security:
+        - BearerAuth: []
       summary: 订阅成员的音视频流
       description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员属于房间后，将请求代理至 Live777 WHEP。
       tags:
@@ -192,6 +208,8 @@ paths:
                 type: string
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
@@ -215,9 +233,10 @@ paths:
           type: string
           minLength: 1
           maxLength: 200
-      - $ref: "#/components/parameters/CurrentMemberId"
     delete:
       operationId: closeRoomMediaSession
+      security:
+        - BearerAuth: []
       summary: 关闭媒体会话
       description: 仅允许创建该 WHIP/WHEP 会话的当前成员关闭会话。
       tags:
@@ -227,11 +246,18 @@ paths:
           description: 媒体会话已关闭
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
           $ref: "#/components/responses/MediaServiceUnavailable"
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     RoomId:
       name: room_id
@@ -244,14 +270,6 @@ components:
       name: member_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
-    CurrentMemberId:
-      name: X-Member-Id
-      in: header
-      required: true
-      description: 当前浏览器会话中的房间成员编号，用于校验媒体操作权限。
       schema:
         type: string
         format: uuid
@@ -269,6 +287,24 @@ components:
         type: string
         format: uri-reference
   responses:
+    SessionAuthenticationRequired:
+      description: 未提供、无效或已过期的房间成员会话令牌
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RoomMemberAccessDenied:
+      description: 会话令牌不属于目标房间或成员
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     InvalidRequest:
       description: 请求字段或路径参数无效
       headers:
@@ -455,18 +491,40 @@ components:
         request_id:
           type: string
           format: uuid
-    RoomMemberResponse:
+    CreateRoomResponse:
       type: object
       additionalProperties: false
       required:
         - data
+        - session_token
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/RoomDetails"
+        session_token:
+          $ref: "#/components/schemas/SessionToken"
+        request_id:
+          type: string
+          format: uuid
+    JoinRoomResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - session_token
         - request_id
       properties:
         data:
           $ref: "#/components/schemas/RoomMember"
+        session_token:
+          $ref: "#/components/schemas/SessionToken"
         request_id:
           type: string
           format: uuid
+    SessionToken:
+      type: string
+      minLength: 1
+      description: 当前房间成员的短期访问令牌；成员接口通过 Authorization Bearer 头传递，禁止写入 URL、日志或持久化存储。
     HealthResponse:
       type: object
       additionalProperties: false

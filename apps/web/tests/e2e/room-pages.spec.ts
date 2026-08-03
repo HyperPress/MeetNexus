@@ -9,6 +9,7 @@ const roomId = '11111111-1111-4111-8111-111111111111'
 const hostId = '22222222-2222-4222-8222-222222222222'
 const participantId = '33333333-3333-4333-8333-333333333333'
 const requestId = '44444444-4444-4444-8444-444444444444'
+const sessionToken = 'test-room-session-token'
 
 const roomDetailsResponse = {
   data: {
@@ -39,7 +40,10 @@ async function fulfillRoomApi(route: Route) {
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      json: roomDetailsResponse,
+      json: {
+        ...roomDetailsResponse,
+        session_token: sessionToken,
+      },
     })
     return
   }
@@ -72,6 +76,7 @@ async function fulfillRoomApi(route: Route) {
           online: true,
         },
         request_id: requestId,
+        session_token: sessionToken,
       },
     })
     return
@@ -81,6 +86,9 @@ async function fulfillRoomApi(route: Route) {
     url.pathname.endsWith('/heartbeat') &&
     method === 'POST'
   ) {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
     await route.fulfill({
       status: 204,
     })
@@ -88,6 +96,9 @@ async function fulfillRoomApi(route: Route) {
   }
 
   if (method === 'DELETE') {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
     await route.fulfill({
       status: 204,
     })

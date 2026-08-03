@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -13,7 +13,7 @@ pub struct Room {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemberRole {
     Host,

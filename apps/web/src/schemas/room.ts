@@ -52,9 +52,18 @@ export const RoomDetailsResponseSchema = z.strictObject({
   request_id: UuidSchema,
 })
 
-export const RoomMemberResponseSchema = z.strictObject({
+export const SessionTokenSchema = z.string().min(1)
+
+export const CreateRoomResponseSchema = z.strictObject({
+  data: RoomDetailsSchema,
+  request_id: UuidSchema,
+  session_token: SessionTokenSchema,
+})
+
+export const JoinRoomResponseSchema = z.strictObject({
   data: RoomMemberSchema,
   request_id: UuidSchema,
+  session_token: SessionTokenSchema,
 })
 
 export const ErrorDetailSchema = z.strictObject({
@@ -80,6 +89,9 @@ export type RoomDetails = z.infer<typeof RoomDetailsSchema>
 export type RoomDetailsResponse = z.infer<
   typeof RoomDetailsResponseSchema
 >
-export type RoomMemberResponse = z.infer<
-  typeof RoomMemberResponseSchema
+export type CreateRoomResponse = z.infer<
+  typeof CreateRoomResponseSchema
+>
+export type JoinRoomResponse = z.infer<
+  typeof JoinRoomResponseSchema
 >

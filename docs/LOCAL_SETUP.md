@@ -50,7 +50,7 @@ $env:LIVE777_URL = "http://127.0.0.1:7777"
 $env:RUST_LOG = "api=info,tower_http=info"
 ```
 
-Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`；禁止提交真实密码或 Token。
+Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至少 32 个字符的随机 `AUTH_JWT_SECRET`，用于签发房间成员会话令牌；禁止提交真实密码、Token 或签名密钥。
 
 ## 启动顺序
 

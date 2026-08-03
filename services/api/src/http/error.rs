@@ -22,6 +22,12 @@ pub enum ApiError {
     MemberNotFound {
         request_id: Uuid,
     },
+    SessionAuthenticationRequired {
+        request_id: Uuid,
+    },
+    RoomMemberAccessDenied {
+        request_id: Uuid,
+    },
     MediaAccessDenied {
         request_id: Uuid,
     },
@@ -61,6 +67,18 @@ impl ApiError {
                 StatusCode::NOT_FOUND,
                 "MEMBER_NOT_FOUND",
                 "成员不存在",
+                *request_id,
+            ),
+            Self::SessionAuthenticationRequired { request_id } => (
+                StatusCode::UNAUTHORIZED,
+                "SESSION_AUTHENTICATION_REQUIRED",
+                "请重新加入会议以继续操作",
+                *request_id,
+            ),
+            Self::RoomMemberAccessDenied { request_id } => (
+                StatusCode::FORBIDDEN,
+                "ROOM_MEMBER_ACCESS_DENIED",
+                "当前成员无权操作该会议资源",
                 *request_id,
             ),
             Self::MediaAccessDenied { request_id } => (

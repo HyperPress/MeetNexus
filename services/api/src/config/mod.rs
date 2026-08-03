@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub redis_url: String,
     pub live777_url: String,
     pub live777_token: Option<String>,
+    pub auth_jwt_secret: String,
     pub rust_log: String,
 }
 
@@ -81,6 +82,13 @@ impl AppConfig {
         validate_live777_url(&live777_url)?;
 
         let live777_token = lookup("LIVE777_TOKEN").filter(|value| !value.trim().is_empty());
+        let auth_jwt_secret = required(&lookup, "AUTH_JWT_SECRET")?;
+        if auth_jwt_secret.len() < 32 {
+            return Err(ConfigError::Invalid {
+                name: "AUTH_JWT_SECRET",
+                reason: "JWT 签名密钥必须至少包含 32 个字符",
+            });
+        }
         let rust_log = lookup("RUST_LOG")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_RUST_LOG.to_owned());
@@ -91,6 +99,7 @@ impl AppConfig {
             redis_url,
             live777_url,
             live777_token,
+            auth_jwt_secret,
             rust_log,
         })
     }
@@ -125,13 +134,17 @@ fn validate_live777_url(value: &str) -> Result<(), ConfigError> {
 mod tests {
     use super::{AppConfig, ConfigError};
 
-    const VALID_VALUES: [(&str, &str); 3] = [
+    const VALID_VALUES: [(&str, &str); 4] = [
         (
             "DATABASE_URL",
             "postgres://meetnexus:password@localhost:5432/meetnexus",
         ),
         ("REDIS_URL", "redis://localhost:6379/0"),
         ("LIVE777_URL", "http://localhost:7777"),
+        (
+            "AUTH_JWT_SECRET",
+            "test-secret-that-is-long-enough-for-jwt-signing",
+        ),
     ];
 
     #[test]
@@ -160,7 +173,12 @@ mod tests {
 
     #[test]
     fn rejects_each_missing_required_value() {
-        for missing_name in ["DATABASE_URL", "REDIS_URL", "LIVE777_URL"] {
+        for missing_name in [
+            "DATABASE_URL",
+            "REDIS_URL",
+            "LIVE777_URL",
+            "AUTH_JWT_SECRET",
+        ] {
             let values = VALID_VALUES
                 .into_iter()
                 .filter(|(name, _)| *name != missing_name);

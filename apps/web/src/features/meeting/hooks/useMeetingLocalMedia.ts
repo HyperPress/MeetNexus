@@ -25,12 +25,14 @@ interface MeetingMediaOptions {
   memberId: string | null
   remoteMemberIds: string[]
   roomId: string
+  sessionToken: string | null
 }
 
 export function useMeetingLocalMedia({
   memberId,
   remoteMemberIds,
   roomId,
+  sessionToken,
 }: MeetingMediaOptions) {
   const mountedRef = useRef(true)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -77,7 +79,7 @@ export function useMeetingLocalMedia({
 
   const publishLocalStream = useCallback(
     async (stream: MediaStream) => {
-      if (memberId === null) {
+      if (memberId === null || sessionToken === null) {
         return
       }
 
@@ -89,6 +91,7 @@ export function useMeetingLocalMedia({
             roomId,
             memberId,
             streamMemberId: memberId,
+            sessionToken,
           },
           stream,
         )
@@ -125,7 +128,7 @@ export function useMeetingLocalMedia({
         }
       }
     },
-    [closePublishSession, memberId, roomId],
+    [closePublishSession, memberId, roomId, sessionToken],
   )
 
   const stopDevices = useCallback(() => {
@@ -243,7 +246,11 @@ export function useMeetingLocalMedia({
   }, [isStartingDevices, publishLocalStream])
 
   useEffect(() => {
-    if (memberId === null || localStreamRef.current === null) {
+    if (
+      memberId === null ||
+      sessionToken === null ||
+      localStreamRef.current === null
+    ) {
       return
     }
 
@@ -269,6 +276,7 @@ export function useMeetingLocalMedia({
         roomId,
         memberId,
         streamMemberId: remoteMemberId,
+        sessionToken,
       })
         .then((session) => {
           if (!mountedRef.current || !desiredMemberIds.has(remoteMemberId)) {
@@ -287,7 +295,7 @@ export function useMeetingLocalMedia({
           }
         })
     }
-  }, [memberId, remoteMemberIds, roomId])
+  }, [memberId, remoteMemberIds, roomId, sessionToken])
 
   const toggleCamera = useCallback(() => {
     const currentStream = localStreamRef.current

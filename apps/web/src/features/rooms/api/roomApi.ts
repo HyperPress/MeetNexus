@@ -4,11 +4,13 @@ import {
 } from '../../../lib/api/httpClient'
 import {
   RoomDetailsResponseSchema,
-  RoomMemberResponseSchema,
+  CreateRoomResponseSchema,
+  JoinRoomResponseSchema,
   type CreateRoomRequest,
   type JoinRoomRequest,
+  type CreateRoomResponse,
+  type JoinRoomResponse,
   type RoomDetailsResponse,
-  type RoomMemberResponse,
 } from '../../../schemas/room'
 
 function roomPath(roomId: string): string {
@@ -21,8 +23,8 @@ function memberPath(roomId: string, memberId: string): string {
 
 export function createRoom(
   request: CreateRoomRequest,
-): Promise<RoomDetailsResponse> {
-  return requestJson('/rooms', RoomDetailsResponseSchema, {
+): Promise<CreateRoomResponse> {
+  return requestJson('/rooms', CreateRoomResponseSchema, {
     method: 'POST',
     body: JSON.stringify(request),
   })
@@ -37,10 +39,10 @@ export function getRoom(
 export function joinRoom(
   roomId: string,
   request: JoinRoomRequest,
-): Promise<RoomMemberResponse> {
+): Promise<JoinRoomResponse> {
   return requestJson(
     `${roomPath(roomId)}/members`,
-    RoomMemberResponseSchema,
+    JoinRoomResponseSchema,
     {
       method: 'POST',
       body: JSON.stringify(request),
@@ -51,8 +53,10 @@ export function joinRoom(
 export function leaveRoom(
   roomId: string,
   memberId: string,
+  sessionToken: string,
 ): Promise<void> {
   return requestNoContent(memberPath(roomId, memberId), {
+    headers: { Authorization: `Bearer ${sessionToken}` },
     method: 'DELETE',
   })
 }
@@ -60,10 +64,12 @@ export function leaveRoom(
 export function refreshRoomMemberPresence(
   roomId: string,
   memberId: string,
+  sessionToken: string,
 ): Promise<void> {
   return requestNoContent(
     `${memberPath(roomId, memberId)}/heartbeat`,
     {
+      headers: { Authorization: `Bearer ${sessionToken}` },
       method: 'POST',
     },
   )

@@ -12,6 +12,7 @@ interface MeetingMediaStageProps {
     id: string
   }>
   roomId: string
+  sessionToken: string | null
 }
 
 export function MeetingMediaStage({
@@ -20,11 +21,13 @@ export function MeetingMediaStage({
   memberId,
   remoteMembers,
   roomId,
+  sessionToken,
 }: MeetingMediaStageProps) {
   const media = useMeetingLocalMedia({
     memberId,
     remoteMemberIds: remoteMembers.map((member) => member.id),
     roomId,
+    sessionToken,
   })
 
   return (

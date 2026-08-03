@@ -18,15 +18,15 @@ use crate::{
 
 use super::{
     ApiError,
+    auth::SessionTokenService,
     request_context::{self, RequestContext},
 };
-
-const MEMBER_ID_HEADER: &str = "x-member-id";
 
 #[derive(Clone)]
 pub struct MediaApiState {
     pub live777: Live777Client,
     pub rooms: PgRoomRepository,
+    pub session_tokens: SessionTokenService,
 }
 
 pub fn router(state: MediaApiState) -> Router {
@@ -50,10 +50,13 @@ async fn publish(
 ) -> Result<Response, ApiError> {
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let member_id = parse_uuid(&member_id, context.request_id())?;
-    let current_member_id = current_member_id(&headers, context.request_id())?;
+    let current_member = state
+        .session_tokens
+        .authenticate(&headers, context.request_id())?;
+    let current_member_id = current_member.member_id();
     validate_offer(&headers, &offer, context.request_id())?;
 
-    if current_member_id != member_id {
+    if !current_member.authorizes(room_id, member_id) {
         return Err(ApiError::MediaAccessDenied {
             request_id: context.request_id(),
         });
@@ -93,8 +96,16 @@ async fn subscribe(
 ) -> Result<Response, ApiError> {
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let stream_member_id = parse_uuid(&member_id, context.request_id())?;
-    let current_member_id = current_member_id(&headers, context.request_id())?;
+    let current_member = state
+        .session_tokens
+        .authenticate(&headers, context.request_id())?;
+    let current_member_id = current_member.member_id();
     validate_offer(&headers, &offer, context.request_id())?;
+    if !current_member.belongs_to_room(room_id) {
+        return Err(ApiError::MediaAccessDenied {
+            request_id: context.request_id(),
+        });
+    }
     authorize_member(&state, room_id, current_member_id, context.request_id()).await?;
     authorize_member(&state, room_id, stream_member_id, context.request_id()).await?;
 
@@ -136,8 +147,11 @@ async fn close_session(
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let stream_member_id = parse_uuid(&stream_member_id, context.request_id())?;
     let member_id = parse_uuid(&member_id, context.request_id())?;
-    let current_member_id = current_member_id(&headers, context.request_id())?;
-    if current_member_id != member_id || !valid_session_id(&session_id) {
+    let current_member = state
+        .session_tokens
+        .authenticate(&headers, context.request_id())?;
+    let current_member_id = current_member.member_id();
+    if !current_member.authorizes(room_id, member_id) || !valid_session_id(&session_id) {
         return Err(ApiError::MediaAccessDenied {
             request_id: context.request_id(),
         });
@@ -256,17 +270,6 @@ fn media_answer(
         error_code = "-",
     );
     Ok(answer)
-}
-
-fn current_member_id(headers: &HeaderMap, request_id: Uuid) -> Result<Uuid, ApiError> {
-    headers
-        .get(MEMBER_ID_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or(ApiError::BadRequest {
-            request_id,
-            message: "当前成员编号格式无效",
-        })
 }
 
 fn parse_uuid(value: &str, request_id: Uuid) -> Result<Uuid, ApiError> {

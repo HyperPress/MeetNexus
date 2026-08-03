@@ -8,6 +8,7 @@ export class MeetingMediaError extends Error {
 interface NegotiationOptions {
   memberId: string
   roomId: string
+  sessionToken: string
   streamMemberId: string
 }
 
@@ -20,10 +21,10 @@ export interface SubscriptionSession extends MediaSession {
   stream: MediaStream
 }
 
-function mediaHeaders(memberId: string): HeadersInit {
+function mediaHeaders(sessionToken: string): HeadersInit {
   return {
+    Authorization: `Bearer ${sessionToken}`,
     'Content-Type': 'application/sdp',
-    'X-Member-Id': memberId,
   }
 }
 
@@ -68,7 +69,7 @@ async function getErrorMessage(response: Response): Promise<string> {
 async function negotiate(
   connection: RTCPeerConnection,
   url: string,
-  memberId: string,
+  sessionToken: string,
 ): Promise<() => Promise<void>> {
   const offer = await connection.createOffer()
   await connection.setLocalDescription(offer)
@@ -81,7 +82,7 @@ async function negotiate(
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: mediaHeaders(memberId),
+    headers: mediaHeaders(sessionToken),
     body: sdp,
   })
   if (!response.ok) {
@@ -109,7 +110,7 @@ async function negotiate(
       await fetch(location, {
         method: 'DELETE',
         headers: {
-          'X-Member-Id': memberId,
+          Authorization: `Bearer ${sessionToken}`,
         },
       })
     } catch {
@@ -131,7 +132,7 @@ export async function publishWhip(
     const close = await negotiate(
       connection,
       `/media/whip/${options.roomId}/${options.streamMemberId}`,
-      options.memberId,
+      options.sessionToken,
     )
     return { connection, close }
   } catch (error) {
@@ -159,7 +160,7 @@ export async function subscribeWhep(
     const close = await negotiate(
       connection,
       `/media/whep/${options.roomId}/${options.streamMemberId}`,
-      options.memberId,
+      options.sessionToken,
     )
     return { connection, close, stream }
   } catch (error) {

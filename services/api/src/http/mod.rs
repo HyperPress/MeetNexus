@@ -1,3 +1,4 @@
+pub mod auth;
 mod error;
 mod health;
 pub mod media;

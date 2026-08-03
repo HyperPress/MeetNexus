@@ -4,6 +4,7 @@ const roomId = 'a1e8bd65-631c-4c6e-bd79-b46d90ab4701'
 const hostId = '2746fdb9-a0d7-4e32-9723-42a77ed9b018'
 const participantId = 'ca5abed4-4635-4ab4-a23d-c2b9f1a8ad79'
 const requestId = 'f3d40968-f0e0-44fc-8b68-89d7f44c9ce3'
+const sessionToken = 'test-media-session-token'
 
 async function installIsolatedPeerConnection(page: Page) {
   await page.addInitScript(() => {
@@ -111,11 +112,13 @@ async function fulfillApi(route: Route) {
   }
 
   if (request.method() === 'DELETE' && url.pathname.startsWith('/media/')) {
+    expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
     await route.fulfill({ status: 204 })
     return
   }
 
   if (request.method() === 'POST' && url.pathname.startsWith('/media/')) {
+    expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
     await route.fulfill({
       status: 201,
       headers: {
@@ -136,7 +139,7 @@ test.describe('MeetNexus 音视频媒体流程', () => {
   }) => {
     await installIsolatedPeerConnection(page)
     await page.addInitScript(
-      ({ roomId: storedRoomId, memberId }) => {
+      ({ roomId: storedRoomId, memberId, token }) => {
         sessionStorage.setItem(
           'meetnexus.room-session',
           JSON.stringify({
@@ -144,10 +147,11 @@ test.describe('MeetNexus 音视频媒体流程', () => {
             memberId,
             displayName: '测试主持人',
             role: 'host',
+            sessionToken: token,
           }),
         )
       },
-      { roomId, memberId: hostId },
+      { roomId, memberId: hostId, token: sessionToken },
     )
     await page.route(
       /http:\/\/127\.0\.0\.1:4173\/(?:rooms|media)\/.*$/,

@@ -95,6 +95,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
         await refreshRoomMemberPresence(
           activeSession.roomId,
           activeSession.memberId,
+          activeSession.sessionToken,
         )
 
         if (active) {
@@ -131,6 +132,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
       await leaveRoom(
         currentSession.roomId,
         currentSession.memberId,
+        currentSession.sessionToken,
       )
 
       clearRoomSession()
@@ -278,6 +280,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
                 displayName: member.display_name,
               }))}
             roomId={roomId}
+            sessionToken={currentSession?.sessionToken ?? null}
           />
 
           <aside className="card bg-base-100 shadow-xl">

@@ -67,6 +67,8 @@
 
 ## 最近变更
 
+- 2026-08-03：录制启动的重复保护下沉到 PostgreSQL 局部唯一索引 `recordings_one_active_per_member`，消除并发请求同时越过应用层预检查而创建两条活动录制的竞态；约束冲突会停止本次 Live777 recorder 并返回既有的 `409 RECORDING_ALREADY_ACTIVE`。
+
 - 2026-08-03：会议页接入不新增第三方依赖的原生 MediaSource DASH 回放播放器。播放器通过成员 Bearer 令牌按需读取 MPD、初始化分片和媒体分片；Playwright 覆盖受保护文件请求与缓冲流程。使用真实 Live777 录制文件完成 Chromium MediaSource 验收，音频轨道已成功追加并得到 3.52 秒有效时长。
 
 - 2026-08-03：新增 `scripts/start-api.ps1`，从本机 `.env` 加载允许的 API 配置并将 `RECORDING_STORAGE_ROOT` 转为绝对路径。使用隔离 Chromium 虚拟设备完成真实 WHIP 发布、Live777 录制、停止和受保护 MPD 文件读取验收：回放接口返回 `200`、`application/dash+xml`、`private, no-store`，且清单非空。

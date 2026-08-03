@@ -14,7 +14,7 @@ use crate::{
     infrastructure::{
         live777::Live777Client,
         postgres::PgRoomRepository,
-        postgres_recordings::PgRecordingRepository,
+        postgres_recordings::{CreateRecordingError, PgRecordingRepository},
         recording_storage::{RecordingFileError, RecordingFileStorage},
     },
 };
@@ -130,10 +130,19 @@ async fn start_recording(
         started_at: Utc::now(),
         stopped_at: None,
     };
-    if state.recordings.create_recording(&recording).await.is_err() {
+    if let Err(error) = state
+        .recordings
+        .create_recording_exclusive(&recording)
+        .await
+    {
         let _ = state.live777.stop_recording(&stream_id).await;
-        return Err(ApiError::Internal {
-            request_id: context.request_id(),
+        return Err(match error {
+            CreateRecordingError::AlreadyActive => ApiError::RecordingAlreadyActive {
+                request_id: context.request_id(),
+            },
+            CreateRecordingError::Storage(_) => ApiError::Internal {
+                request_id: context.request_id(),
+            },
         });
     }
     log_recording(

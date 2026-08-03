@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row};
+use sqlx::{Error as SqlxError, PgPool, Row};
 use uuid::Uuid;
 
 use crate::{
@@ -12,10 +12,44 @@ pub struct PgRecordingRepository {
     pool: PgPool,
 }
 
+#[derive(Debug)]
+pub enum CreateRecordingError {
+    AlreadyActive,
+    Storage(StorageError),
+}
+
 impl PgRecordingRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    pub async fn create_recording_exclusive(
+        &self,
+        recording: &Recording,
+    ) -> Result<(), CreateRecordingError> {
+        insert_recording(&self.pool, recording)
+            .await
+            .map_err(|error| {
+                if is_active_recording_conflict(&error) {
+                    CreateRecordingError::AlreadyActive
+                } else {
+                    CreateRecordingError::Storage(storage_error(error))
+                }
+            })
+    }
+}
+
+async fn insert_recording(pool: &PgPool, recording: &Recording) -> Result<(), SqlxError> {
+    sqlx::query("INSERT INTO recordings (id, room_id, member_id, started_by, live777_record_id, mpd_path, state, started_at, stopped_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)")
+        .bind(recording.id).bind(recording.room_id).bind(recording.member_id).bind(recording.started_by).bind(&recording.live777_record_id).bind(&recording.mpd_path).bind(recording.state.as_str()).bind(recording.started_at).bind(recording.stopped_at).execute(pool).await?;
+    Ok(())
+}
+
+fn is_active_recording_conflict(error: &SqlxError) -> bool {
+    error.as_database_error().is_some_and(|database_error| {
+        database_error.code().as_deref() == Some("23505")
+            && database_error.constraint() == Some("recordings_one_active_per_member")
+    })
 }
 
 fn storage_error(error: impl std::fmt::Display) -> StorageError {
@@ -43,9 +77,9 @@ fn recording_from_row(row: sqlx::postgres::PgRow) -> Result<Recording, StorageEr
 
 impl RecordingRepository for PgRecordingRepository {
     async fn create_recording(&self, recording: &Recording) -> Result<(), StorageError> {
-        sqlx::query("INSERT INTO recordings (id, room_id, member_id, started_by, live777_record_id, mpd_path, state, started_at, stopped_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)")
-            .bind(recording.id).bind(recording.room_id).bind(recording.member_id).bind(recording.started_by).bind(&recording.live777_record_id).bind(&recording.mpd_path).bind(recording.state.as_str()).bind(recording.started_at).bind(recording.stopped_at).execute(&self.pool).await.map_err(storage_error)?;
-        Ok(())
+        insert_recording(&self.pool, recording)
+            .await
+            .map_err(storage_error)
     }
 
     async fn find_recording(

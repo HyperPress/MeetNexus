@@ -359,8 +359,8 @@ export function MeetingMediaStage({
           )}
 
           <p className="mt-3 text-center text-xs leading-5 text-base-content/60">
-            摄像头和麦克风通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
-            Live777。屏幕分享当前仍只用于本地预览。
+            摄像头、麦克风和屏幕分享均通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
+            Live777。
           </p>
         </div>
       </div>
@@ -371,7 +371,7 @@ export function MeetingMediaStage({
             <h2 className="card-title">本地屏幕分享</h2>
 
             <p className="text-sm text-base-content/70">
-              这是浏览器返回的共享画面和捕获信息，当前仅供本机检查。
+              这是浏览器返回的共享画面和捕获信息；共享流会同时发布给会议中的其他成员。
             </p>
 
             <ScreenSharePreview

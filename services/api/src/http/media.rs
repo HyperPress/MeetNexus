@@ -29,13 +29,41 @@ pub struct MediaApiState {
     pub session_tokens: SessionTokenService,
 }
 
+#[derive(Clone, Copy)]
+enum StreamKind {
+    Camera,
+    Screen,
+}
+
+struct SessionCloseInput {
+    context: RequestContext,
+    headers: HeaderMap,
+    member_id: String,
+    room_id: String,
+    session_id: String,
+    state: MediaApiState,
+    stream_member_id: String,
+}
+
 pub fn router(state: MediaApiState) -> Router {
     Router::new()
         .route("/media/whip/{room_id}/{member_id}", post(publish))
         .route("/media/whep/{room_id}/{member_id}", post(subscribe))
         .route(
+            "/media/whip/{room_id}/{member_id}/screen",
+            post(publish_screen),
+        )
+        .route(
+            "/media/whep/{room_id}/{member_id}/screen",
+            post(subscribe_screen),
+        )
+        .route(
             "/media/sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}",
             delete(close_session),
+        )
+        .route(
+            "/media/screen-sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}",
+            delete(close_screen_session),
         )
         .with_state(state)
         .layer(axum::middleware::from_fn(request_context::attach))
@@ -47,6 +75,46 @@ async fn publish(
     Path((room_id, member_id)): Path<(String, String)>,
     headers: HeaderMap,
     offer: Bytes,
+) -> Result<Response, ApiError> {
+    publish_with_kind(
+        state,
+        context,
+        member_id,
+        room_id,
+        headers,
+        offer,
+        StreamKind::Camera,
+    )
+    .await
+}
+
+async fn publish_screen(
+    State(state): State<MediaApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((room_id, member_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    offer: Bytes,
+) -> Result<Response, ApiError> {
+    publish_with_kind(
+        state,
+        context,
+        member_id,
+        room_id,
+        headers,
+        offer,
+        StreamKind::Screen,
+    )
+    .await
+}
+
+async fn publish_with_kind(
+    state: MediaApiState,
+    context: RequestContext,
+    member_id: String,
+    room_id: String,
+    headers: HeaderMap,
+    offer: Bytes,
+    kind: StreamKind,
 ) -> Result<Response, ApiError> {
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let member_id = parse_uuid(&member_id, context.request_id())?;
@@ -63,7 +131,7 @@ async fn publish(
     }
     authorize_member(&state, room_id, current_member_id, context.request_id()).await?;
 
-    let stream_id = stream_id(room_id, member_id);
+    let stream_id = stream_id(room_id, member_id, kind);
     let response = state
         .live777
         .whip(&stream_id, &offer)
@@ -83,6 +151,7 @@ async fn publish(
         room_id,
         member_id,
         current_member_id,
+        kind,
         "media_whip_published",
     )
 }
@@ -93,6 +162,46 @@ async fn subscribe(
     Path((room_id, member_id)): Path<(String, String)>,
     headers: HeaderMap,
     offer: Bytes,
+) -> Result<Response, ApiError> {
+    subscribe_with_kind(
+        state,
+        context,
+        member_id,
+        room_id,
+        headers,
+        offer,
+        StreamKind::Camera,
+    )
+    .await
+}
+
+async fn subscribe_screen(
+    State(state): State<MediaApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((room_id, member_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    offer: Bytes,
+) -> Result<Response, ApiError> {
+    subscribe_with_kind(
+        state,
+        context,
+        member_id,
+        room_id,
+        headers,
+        offer,
+        StreamKind::Screen,
+    )
+    .await
+}
+
+async fn subscribe_with_kind(
+    state: MediaApiState,
+    context: RequestContext,
+    member_id: String,
+    room_id: String,
+    headers: HeaderMap,
+    offer: Bytes,
+    kind: StreamKind,
 ) -> Result<Response, ApiError> {
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let stream_member_id = parse_uuid(&member_id, context.request_id())?;
@@ -109,7 +218,7 @@ async fn subscribe(
     authorize_member(&state, room_id, current_member_id, context.request_id()).await?;
     authorize_member(&state, room_id, stream_member_id, context.request_id()).await?;
 
-    let stream_id = stream_id(room_id, stream_member_id);
+    let stream_id = stream_id(room_id, stream_member_id, kind);
     let response = state
         .live777
         .whep(&stream_id, &offer)
@@ -129,6 +238,7 @@ async fn subscribe(
         room_id,
         stream_member_id,
         current_member_id,
+        kind,
         "media_whep_subscribed",
     )
 }
@@ -144,6 +254,60 @@ async fn close_session(
     )>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
+    close_session_with_kind(
+        SessionCloseInput {
+            context,
+            headers,
+            member_id,
+            room_id,
+            session_id,
+            state,
+            stream_member_id,
+        },
+        StreamKind::Camera,
+    )
+    .await
+}
+
+async fn close_screen_session(
+    State(state): State<MediaApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((room_id, stream_member_id, member_id, session_id)): Path<(
+        String,
+        String,
+        String,
+        String,
+    )>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    close_session_with_kind(
+        SessionCloseInput {
+            context,
+            headers,
+            member_id,
+            room_id,
+            session_id,
+            state,
+            stream_member_id,
+        },
+        StreamKind::Screen,
+    )
+    .await
+}
+
+async fn close_session_with_kind(
+    input: SessionCloseInput,
+    kind: StreamKind,
+) -> Result<StatusCode, ApiError> {
+    let SessionCloseInput {
+        context,
+        headers,
+        member_id,
+        room_id,
+        session_id,
+        state,
+        stream_member_id,
+    } = input;
     let room_id = parse_uuid(&room_id, context.request_id())?;
     let stream_member_id = parse_uuid(&stream_member_id, context.request_id())?;
     let member_id = parse_uuid(&member_id, context.request_id())?;
@@ -158,7 +322,7 @@ async fn close_session(
     }
     authorize_member(&state, room_id, current_member_id, context.request_id()).await?;
 
-    let stream_id = stream_id(room_id, stream_member_id);
+    let stream_id = stream_id(room_id, stream_member_id, kind);
     let response = state
         .live777
         .close_session(&stream_id, &session_id)
@@ -220,9 +384,10 @@ fn media_answer(
     room_id: Uuid,
     stream_member_id: Uuid,
     current_member_id: Uuid,
+    kind: StreamKind,
     event: &'static str,
 ) -> Result<Response, ApiError> {
-    let stream_id = stream_id(room_id, stream_member_id);
+    let stream_id = stream_id(room_id, stream_member_id, kind);
     if response.status != StatusCode::CREATED || response.body.is_empty() {
         log_media_error(
             request_id,
@@ -243,8 +408,14 @@ fn media_answer(
         );
         ApiError::MediaServiceUnavailable { request_id }
     })?;
-    let location =
-        format!("/media/sessions/{room_id}/{stream_member_id}/{current_member_id}/{session_id}");
+    let location = match kind {
+        StreamKind::Camera => {
+            format!("/media/sessions/{room_id}/{stream_member_id}/{current_member_id}/{session_id}")
+        }
+        StreamKind::Screen => format!(
+            "/media/screen-sessions/{room_id}/{stream_member_id}/{current_member_id}/{session_id}"
+        ),
+    };
     let content_type = response
         .content_type
         .unwrap_or_else(|| "application/sdp".to_owned());
@@ -301,8 +472,11 @@ fn valid_session_id(value: &str) -> bool {
         })
 }
 
-fn stream_id(room_id: Uuid, member_id: Uuid) -> String {
-    format!("room-{room_id}-member-{member_id}")
+fn stream_id(room_id: Uuid, member_id: Uuid, kind: StreamKind) -> String {
+    match kind {
+        StreamKind::Camera => format!("room-{room_id}-member-{member_id}"),
+        StreamKind::Screen => format!("room-{room_id}-member-{member_id}-screen"),
+    }
 }
 
 fn map_storage_error(

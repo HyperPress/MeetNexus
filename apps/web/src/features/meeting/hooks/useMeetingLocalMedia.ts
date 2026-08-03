@@ -37,6 +37,7 @@ export function useMeetingLocalMedia({
   const mountedRef = useRef(true)
   const localStreamRef = useRef<MediaStream | null>(null)
   const publishSessionRef = useRef<MediaSession | null>(null)
+  const screenPublishSessionRef = useRef<MediaSession | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
   const subscriptionsRef = useRef(new Map<string, SubscriptionSession>())
@@ -72,6 +73,14 @@ export function useMeetingLocalMedia({
   const closePublishSession = useCallback(() => {
     const session = publishSessionRef.current
     publishSessionRef.current = null
+    if (session !== null) {
+      void session.close()
+    }
+  }, [])
+
+  const closeScreenPublishSession = useCallback(() => {
+    const session = screenPublishSessionRef.current
+    screenPublishSessionRef.current = null
     if (session !== null) {
       void session.close()
     }
@@ -150,13 +159,14 @@ export function useMeetingLocalMedia({
     const currentStream = screenStreamRef.current
 
     screenStreamRef.current = null
+    closeScreenPublishSession()
     stopLocalMedia(currentStream)
 
     setScreenStream(null)
     setScreenInfo(null)
     setScreenErrorMessage(null)
     setStatusMessage('屏幕分享已停止。')
-  }, [])
+  }, [closeScreenPublishSession])
 
   const stopAllMedia = useCallback(() => {
     const currentLocalStream = localStreamRef.current
@@ -166,6 +176,7 @@ export function useMeetingLocalMedia({
     screenStreamRef.current = null
 
     closePublishSession()
+    closeScreenPublishSession()
     stopLocalMedia(currentLocalStream)
     stopLocalMedia(currentScreenStream)
 
@@ -175,7 +186,7 @@ export function useMeetingLocalMedia({
     setCameraEnabled(false)
     setMicrophoneEnabled(false)
     setConnectionStatus('未连接')
-  }, [closePublishSession])
+  }, [closePublishSession, closeScreenPublishSession])
 
   useEffect(() => {
     mountedRef.current = true
@@ -191,6 +202,7 @@ export function useMeetingLocalMedia({
       screenStreamRef.current = null
 
       closePublishSession()
+      closeScreenPublishSession()
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current)
       }
@@ -201,7 +213,7 @@ export function useMeetingLocalMedia({
       stopLocalMedia(currentLocalStream)
       stopLocalMedia(currentScreenStream)
     }
-  }, [closePublishSession])
+  }, [closePublishSession, closeScreenPublishSession])
 
   const startDevices = useCallback(async () => {
     if (isStartingDevices) {
@@ -327,6 +339,39 @@ export function useMeetingLocalMedia({
     setCameraMirrored((currentValue) => !currentValue)
   }, [])
 
+  const publishScreenStream = useCallback(
+    async (stream: MediaStream) => {
+      if (memberId === null || sessionToken === null) {
+        return
+      }
+
+      closeScreenPublishSession()
+      try {
+        const session = await publishWhip(
+          {
+            roomId,
+            memberId,
+            sessionToken,
+            streamKind: 'screen',
+            streamMemberId: memberId,
+          },
+          stream,
+        )
+        if (!mountedRef.current || screenStreamRef.current !== stream) {
+          await session.close()
+          return
+        }
+        screenPublishSessionRef.current = session
+        setStatusMessage('屏幕共享已发布，正在等待其他成员订阅。')
+      } catch (error) {
+        if (mountedRef.current) {
+          setScreenErrorMessage(getMeetingMediaErrorMessage(error))
+        }
+      }
+    },
+    [closeScreenPublishSession, memberId, roomId, sessionToken],
+  )
+
   const startScreenSharing = useCallback(async () => {
     if (isStartingScreenShare) {
       return
@@ -377,8 +422,9 @@ export function useMeetingLocalMedia({
       setScreenStream(nextStream)
       setScreenInfo(nextScreenInfo)
       setStatusMessage(
-        '已开始本地屏幕分享预览，当前不会发送给其他成员。',
+        '已开始屏幕共享，正在连接媒体服务。',
       )
+      void publishScreenStream(nextStream)
     } catch (error) {
       stopLocalMedia(nextStream)
 
@@ -392,7 +438,7 @@ export function useMeetingLocalMedia({
         setIsStartingScreenShare(false)
       }
     }
-  }, [isStartingScreenShare])
+  }, [isStartingScreenShare, publishScreenStream])
 
   return {
     cameraEnabled,

@@ -9,7 +9,16 @@ interface NegotiationOptions {
   memberId: string
   roomId: string
   sessionToken: string
+  streamKind?: 'camera' | 'screen'
   streamMemberId: string
+}
+
+function mediaPath(
+  operation: 'whip' | 'whep',
+  options: NegotiationOptions,
+): string {
+  const suffix = options.streamKind === 'screen' ? '/screen' : ''
+  return `/media/${operation}/${options.roomId}/${options.streamMemberId}${suffix}`
 }
 
 export interface MediaSession {
@@ -131,7 +140,7 @@ export async function publishWhip(
   try {
     const close = await negotiate(
       connection,
-      `/media/whip/${options.roomId}/${options.streamMemberId}`,
+      mediaPath('whip', options),
       options.sessionToken,
     )
     return { connection, close }
@@ -159,7 +168,7 @@ export async function subscribeWhep(
   try {
     const close = await negotiate(
       connection,
-      `/media/whep/${options.roomId}/${options.streamMemberId}`,
+      mediaPath('whep', options),
       options.sessionToken,
     )
     return { connection, close, stream }

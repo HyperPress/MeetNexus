@@ -234,6 +234,112 @@ paths:
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
           $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/whip/{room_id}/{member_id}/screen:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: publishRoomScreenShare
+      summary: 发布成员的屏幕共享流
+      description: 使用独立于摄像头/麦克风的 Live777 流标识发布屏幕共享，避免覆盖成员主媒体流。
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: 屏幕共享 SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/whep/{room_id}/{member_id}/screen:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: subscribeRoomScreenShare
+      summary: 订阅成员的屏幕共享流
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: 屏幕共享 SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/screen-sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: stream_member_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/MemberId"
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+    delete:
+      operationId: closeRoomScreenShareSession
+      summary: 关闭屏幕共享媒体会话
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: 屏幕共享媒体会话已关闭
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
   /media/sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"

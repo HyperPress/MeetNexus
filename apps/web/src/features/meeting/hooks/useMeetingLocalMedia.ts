@@ -13,11 +13,31 @@ import {
   stopLocalMedia,
   type ScreenShareInfo,
 } from '../../../lib/media/localMedia'
+import {
+  getMeetingMediaErrorMessage,
+  publishWhip,
+  subscribeWhep,
+  type MediaSession,
+  type SubscriptionSession,
+} from '../../../lib/media/whipWhep'
 
-export function useMeetingLocalMedia() {
+interface MeetingMediaOptions {
+  memberId: string | null
+  remoteMemberIds: string[]
+  roomId: string
+}
+
+export function useMeetingLocalMedia({
+  memberId,
+  remoteMemberIds,
+  roomId,
+}: MeetingMediaOptions) {
   const mountedRef = useRef(true)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const publishSessionRef = useRef<MediaSession | null>(null)
+  const reconnectTimerRef = useRef<number | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
+  const subscriptionsRef = useRef(new Map<string, SubscriptionSession>())
 
   const [localStream, setLocalStream] =
     useState<MediaStream | null>(null)
@@ -42,19 +62,86 @@ export function useMeetingLocalMedia() {
     useState<string | null>(null)
   const [statusMessage, setStatusMessage] =
     useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState('未连接')
+  const [remoteStreams, setRemoteStreams] = useState<
+    Record<string, MediaStream>
+  >({})
+
+  const closePublishSession = useCallback(() => {
+    const session = publishSessionRef.current
+    publishSessionRef.current = null
+    if (session !== null) {
+      void session.close()
+    }
+  }, [])
+
+  const publishLocalStream = useCallback(
+    async (stream: MediaStream) => {
+      if (memberId === null) {
+        return
+      }
+
+      closePublishSession()
+      setConnectionStatus('连接中')
+      try {
+        const session = await publishWhip(
+          {
+            roomId,
+            memberId,
+            streamMemberId: memberId,
+          },
+          stream,
+        )
+        if (!mountedRef.current || localStreamRef.current !== stream) {
+          await session.close()
+          return
+        }
+        publishSessionRef.current = session
+        setConnectionStatus('已连接')
+        setStatusMessage('音视频已发布，正在等待其他成员订阅。')
+        session.connection.addEventListener('connectionstatechange', () => {
+          if (
+            !mountedRef.current ||
+            !['disconnected', 'failed'].includes(session.connection.connectionState)
+          ) {
+            return
+          }
+          setConnectionStatus('正在恢复连接')
+          if (reconnectTimerRef.current !== null) {
+            window.clearTimeout(reconnectTimerRef.current)
+          }
+          reconnectTimerRef.current = window.setTimeout(() => {
+            reconnectTimerRef.current = null
+            const currentStream = localStreamRef.current
+            if (currentStream !== null) {
+              void publishLocalStream(currentStream)
+            }
+          }, 1_000)
+        })
+      } catch (error) {
+        if (mountedRef.current) {
+          setConnectionStatus('连接失败')
+          setMediaErrorMessage(getMeetingMediaErrorMessage(error))
+        }
+      }
+    },
+    [closePublishSession, memberId, roomId],
+  )
 
   const stopDevices = useCallback(() => {
     const currentStream = localStreamRef.current
 
     localStreamRef.current = null
+    closePublishSession()
     stopLocalMedia(currentStream)
 
     setLocalStream(null)
     setCameraEnabled(false)
     setMicrophoneEnabled(false)
     setMediaErrorMessage(null)
+    setConnectionStatus('未连接')
     setStatusMessage('摄像头和麦克风已释放。')
-  }, [])
+  }, [closePublishSession])
 
   const stopScreenSharing = useCallback(() => {
     const currentStream = screenStreamRef.current
@@ -75,6 +162,7 @@ export function useMeetingLocalMedia() {
     localStreamRef.current = null
     screenStreamRef.current = null
 
+    closePublishSession()
     stopLocalMedia(currentLocalStream)
     stopLocalMedia(currentScreenStream)
 
@@ -83,10 +171,12 @@ export function useMeetingLocalMedia() {
     setScreenInfo(null)
     setCameraEnabled(false)
     setMicrophoneEnabled(false)
-  }, [])
+    setConnectionStatus('未连接')
+  }, [closePublishSession])
 
   useEffect(() => {
     mountedRef.current = true
+    const subscriptions = subscriptionsRef.current
 
     return () => {
       mountedRef.current = false
@@ -97,10 +187,18 @@ export function useMeetingLocalMedia() {
       localStreamRef.current = null
       screenStreamRef.current = null
 
+      closePublishSession()
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current)
+      }
+      for (const session of subscriptions.values()) {
+        void session.close()
+      }
+      subscriptions.clear()
       stopLocalMedia(currentLocalStream)
       stopLocalMedia(currentScreenStream)
     }
-  }, [])
+  }, [closePublishSession])
 
   const startDevices = useCallback(async () => {
     if (isStartingDevices) {
@@ -129,9 +227,8 @@ export function useMeetingLocalMedia() {
       setMicrophoneEnabled(
         nextStream.getAudioTracks().length > 0,
       )
-      setStatusMessage(
-        '本地音视频设备已启动，当前画面只在本机显示。',
-      )
+      setStatusMessage('本地音视频设备已启动，正在连接媒体服务。')
+      void publishLocalStream(nextStream)
     } catch (error) {
       if (mountedRef.current) {
         setMediaErrorMessage(
@@ -143,7 +240,54 @@ export function useMeetingLocalMedia() {
         setIsStartingDevices(false)
       }
     }
-  }, [isStartingDevices])
+  }, [isStartingDevices, publishLocalStream])
+
+  useEffect(() => {
+    if (memberId === null || localStreamRef.current === null) {
+      return
+    }
+
+    const desiredMemberIds = new Set(
+      remoteMemberIds.filter((remoteMemberId) => remoteMemberId !== memberId),
+    )
+    for (const [remoteMemberId, session] of subscriptionsRef.current) {
+      if (!desiredMemberIds.has(remoteMemberId)) {
+        subscriptionsRef.current.delete(remoteMemberId)
+        void session.close()
+        setRemoteStreams((currentStreams) => {
+          const { [remoteMemberId]: _, ...remainingStreams } = currentStreams
+          return remainingStreams
+        })
+      }
+    }
+
+    for (const remoteMemberId of desiredMemberIds) {
+      if (subscriptionsRef.current.has(remoteMemberId)) {
+        continue
+      }
+      void subscribeWhep({
+        roomId,
+        memberId,
+        streamMemberId: remoteMemberId,
+      })
+        .then((session) => {
+          if (!mountedRef.current || !desiredMemberIds.has(remoteMemberId)) {
+            void session.close()
+            return
+          }
+          subscriptionsRef.current.set(remoteMemberId, session)
+          setRemoteStreams((currentStreams) => ({
+            ...currentStreams,
+            [remoteMemberId]: session.stream,
+          }))
+        })
+        .catch((error: unknown) => {
+          if (mountedRef.current) {
+            setMediaErrorMessage(getMeetingMediaErrorMessage(error))
+          }
+        })
+    }
+  }, [memberId, remoteMemberIds, roomId])
 
   const toggleCamera = useCallback(() => {
     const currentStream = localStreamRef.current
@@ -245,6 +389,7 @@ export function useMeetingLocalMedia() {
   return {
     cameraEnabled,
     cameraMirrored,
+    connectionStatus,
     isStartingDevices,
     isStartingScreenShare,
     localStream,
@@ -253,6 +398,7 @@ export function useMeetingLocalMedia() {
     screenErrorMessage,
     screenInfo,
     screenStream,
+    remoteStreams,
     statusMessage,
     startDevices,
     startScreenSharing,

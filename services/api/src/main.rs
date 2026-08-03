@@ -1,10 +1,11 @@
 use std::process;
 
 use api::{
-    app_with_rooms,
     config::AppConfig,
     http::rooms::RoomApiState,
-    infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
+    infrastructure::{
+        live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
+    },
     telemetry,
 };
 
@@ -56,8 +57,19 @@ async fn main() {
         rooms: PgRoomRepository::new(database),
         presence: RedisPresenceRepository::new(redis),
     };
+    let live777 = Live777Client::new(&config.live777_url, config.live777_token.clone())
+        .unwrap_or_else(|error| {
+            eprintln!("Live777 配置无效：{error}");
+            process::exit(1);
+        });
+    let media_state = api::http::media::MediaApiState {
+        live777,
+        rooms: state.rooms.clone(),
+    };
 
-    if let Err(error) = axum::serve(listener, app_with_rooms(state)).await {
+    if let Err(error) =
+        axum::serve(listener, api::app_with_rooms_and_media(state, media_state)).await
+    {
         tracing::error!(
             request_id = "-",
             room_id = "-",

@@ -25,14 +25,16 @@
 
 - Web 已实现中文房间入口、会前设备预览和房间 HTTP 客户端；创建、查询、加入、离开与心跳响应均经过 Zod 运行时校验，当前房间成员身份保存在浏览器标签页级会话存储中。
 - API 已实现 `/health` 和房间创建、查询、加入、离开、心跳接口，以及 PostgreSQL/Redis 适配器。
-- 当前没有 WebSocket、WHIP/WHEP 媒体代理、媒体授权、录制或回放实现。
-- Live777 配置目前只进行加载和格式校验，尚未被业务代码调用。
+- API 已实现同源 WHIP/WHEP 媒体代理：浏览器提交 SDP 到 `/media/whip` 或 `/media/whep`，API 校验 `X-Member-Id` 对应的房间成员关系，派生成员独占的流 ID 后再转发给 Live777。Live777 Token 仅由 API 从环境变量附加到上游请求。
+- 浏览器媒体层在 ICE 收集完成后发起协商，发布者在连接中断后会重新协商；关闭 `RTCPeerConnection` 时经同源媒体会话地址请求 API 回收 Live777 会话。
+- 当前没有 WebSocket、录制或回放实现；屏幕共享仍仅用于本地预览，尚未作为独立流发布。
 
 ## 运行边界
 
 - Web、API、PostgreSQL、Redis 和 Live777 都直接运行在开发机上，不使用 Docker 或 Compose。
 - 浏览器仅访问 MeetNexus 的同源 API 与媒体地址；不直接依赖 Live777 内网地址或 Token。
 - API 在代理媒体请求前检查用户、房间和流之间的权限关系。
+- 当前成员身份由房间会话中的 `X-Member-Id` 传递；在后续引入登录态前，它只用于校验已创建的房间成员关系，不可视为跨设备的登录凭证。
 - Live777 地址和 Token 只能从本机环境变量读取，禁止进入前端代码或 Git。
 
 ## 代码分层

@@ -130,6 +130,107 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/MemberNotFound"
+  /media/whip/{room_id}/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+      - $ref: "#/components/parameters/CurrentMemberId"
+    post:
+      operationId: publishRoomMedia
+      summary: 发布成员的音视频流
+      description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员身份与发布者一致后，将请求代理至 Live777 WHIP。
+      tags:
+        - 媒体
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/whep/{room_id}/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+      - $ref: "#/components/parameters/CurrentMemberId"
+    post:
+      operationId: subscribeRoomMedia
+      summary: 订阅成员的音视频流
+      description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员属于房间后，将请求代理至 Live777 WHEP。
+      tags:
+        - 媒体
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: stream_member_id
+        in: path
+        required: true
+        description: 被发布媒体的成员编号。
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/MemberId"
+      - name: session_id
+        in: path
+        required: true
+        description: Live777 返回的会话编号。
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+      - $ref: "#/components/parameters/CurrentMemberId"
+    delete:
+      operationId: closeRoomMediaSession
+      summary: 关闭媒体会话
+      description: 仅允许创建该 WHIP/WHEP 会话的当前成员关闭会话。
+      tags:
+        - 媒体
+      responses:
+        "204":
+          description: 媒体会话已关闭
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
 components:
   parameters:
     RoomId:
@@ -146,6 +247,14 @@ components:
       schema:
         type: string
         format: uuid
+    CurrentMemberId:
+      name: X-Member-Id
+      in: header
+      required: true
+      description: 当前浏览器会话中的房间成员编号，用于校验媒体操作权限。
+      schema:
+        type: string
+        format: uuid
   headers:
     RequestId:
       description: 本次请求的关联 ID
@@ -153,6 +262,12 @@ components:
       schema:
         type: string
         format: uuid
+    MediaSessionLocation:
+      description: 同源媒体会话资源地址；客户端在关闭 PeerConnection 时使用 DELETE 请求此地址。
+      required: true
+      schema:
+        type: string
+        format: uri-reference
   responses:
     InvalidRequest:
       description: 请求字段或路径参数无效
@@ -201,6 +316,24 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     InternalServerError:
       description: API 内部错误
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MediaAccessDenied:
+      description: 当前成员无权操作该媒体会话
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MediaServiceUnavailable:
+      description: Live777 媒体服务不可用或媒体协商失败
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"

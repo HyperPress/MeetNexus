@@ -22,6 +22,7 @@
 - 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
 - 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
 - 新增根目录 `.env.example`，保存 PostgreSQL、Redis、Live777 与 API 的非敏感本机连接模板，并明确真实密码和 Token 不得提交。
+- 完成 Live777 音视频闭环：新增同源 WHIP/WHEP SDP 代理、房间成员校验、Live777 Bearer Token 转发和媒体会话回收；会议页支持摄像头/麦克风发布、远端订阅、连接状态和断线重连，屏幕共享仍保持本地预览。
 
 ## 进行中
 
@@ -31,7 +32,7 @@
 
 - 将 GitHub 仓库设为公开，并供岭创之夏展示页引用。
 - 在可控 PostgreSQL/Redis 测试环境中补充房间 HTTP 成功路径和异常恢复自动化测试。
-- 为媒体模块使用房间成员编号完成媒体授权设计。
+- 在已启动 PostgreSQL、Redis 与 Live777 的开发机上，使用两台浏览器完成真实摄像头、麦克风与音频输出的双人手动验收。
 
 ## 阻塞项
 
@@ -48,6 +49,7 @@
 - 2026-07-30：审计修复后前端 lint、生产构建和 8 个 Playwright 测试通过；媒体测试继续使用明确隔离的测试设备与测试流。
 - 2026-07-30：前端真实房间 HTTP 流程修改后 Oxlint、TypeScript/Vite 生产构建与 12 项 Playwright 测试全部通过；端到端测试覆盖原有设备预览、镜像、屏幕分享，以及房间创建、加入、查询、心跳、离开、会话清理和异常响应契约校验。
 - 2026-07-28：本机配置模板通过 `git diff --check`，确认 `.env.example` 可跟踪且真实 `.env` 继续被 Git 忽略。
+- 2026-08-03：Live777 媒体代理修改通过 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test`（12 个单元测试、8 个 HTTP 测试通过，1 个外部存储测试按设计跳过）；前端 Oxlint、TypeScript/Vite 构建和 15 项 Playwright 测试通过。新增的媒体回归测试使用显式隔离的 PeerConnection 与媒体代理响应，不依赖开发机设备或本机 Live777；真实双人音视频仍需在本机服务就绪时手动验收。
 - 2026-07-31：会议房间界面与本地媒体控制修改通过前端 Oxlint、TypeScript/Vite 生产构建和 14 项 Playwright 端到端测试；自动化媒体测试使用隔离的 Chromium 测试设备，真实摄像头、麦克风与系统屏幕选择器仍需手动验证。当前媒体能力仅限本机预览，尚未接入 WHIP/WHEP。
 
 ## 最近变更
@@ -65,6 +67,7 @@
 - 2026-07-29：新增房间和成员数据库迁移、领域模型、房间应用用例、PostgreSQL/Redis 仓储与房间 HTTP 路由；OpenAPI 增加创建、查询、加入、离开和心跳接口。
 - 2026-07-30：纠正首页、README、项目手册、架构和状态文档中的完成边界；补充 SQLx 迁移运行说明、严格 JSON 请求校验、房间日志上下文和 3 个离线房间 HTTP 契约测试。
 - 2026-07-30：前端增加 Zod 房间契约、统一 HTTP 客户端和真实房间业务流程；创建者与参会者身份保存在 `sessionStorage`，房间页面定期发送在线心跳，并支持查询成员和主动离开。
+- 2026-08-03：新增 `services/api/src/infrastructure/live777.rs`、`services/api/src/http/media.rs`、`apps/web/src/lib/media/whipWhep.ts` 与媒体端到端测试；更新 OpenAPI 的 WHIP/WHEP/会话关闭契约，会议页通过同源代理接入 Live777。
 - 修改文件：`apps/web/src/schemas/room.ts`、`apps/web/src/lib/api/httpClient.ts`、`apps/web/src/features/rooms/api/roomApi.ts`、`apps/web/src/features/rooms/session/roomSession.ts`、`apps/web/src/features/rooms/pages/CreateRoomPage.tsx`、`apps/web/src/features/rooms/pages/JoinRoomPage.tsx`、`apps/web/src/features/rooms/pages/RoomPage.tsx`、`apps/web/src/app/AppRouter.tsx`、`apps/web/tests/e2e/room-pages.spec.ts`、`apps/web/vite.config.ts`、`docs/ARCHITECTURE.md`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。
 - 修改文件：`README.md`、`apps/web/src/features/rooms/pages/HomePage.tsx`、`apps/web/tests/e2e/room-pages.spec.ts`、`docs/ARCHITECTURE.md`、`docs/LOCAL_SETUP.md`、`docs/PROJECT_MANUAL.md`、`docs/STATUS.md`、`services/api/migrations/README.md`、`services/api/src/http/rooms.rs`、`services/api/tests/http.rs`。
 - 2026-07-31：会议房间页面接入浏览器本地摄像头、麦克风和屏幕分享控制，复用现有本地媒体适配层与预览组件；新增房间成员媒体操作权限限制和页面卸载资源清理。

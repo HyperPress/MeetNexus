@@ -1,5 +1,6 @@
 mod error;
 mod health;
+pub mod media;
 mod request_context;
 mod response;
 pub mod rooms;
@@ -27,6 +28,13 @@ pub fn router_with_rooms(state: rooms::RoomApiState) -> Router {
         .fallback(route_not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn(request_context::attach))
+}
+
+pub fn router_with_rooms_and_media(
+    rooms_state: rooms::RoomApiState,
+    media_state: media::MediaApiState,
+) -> Router {
+    router_with_rooms(rooms_state).merge(media::router(media_state))
 }
 
 async fn route_not_found(Extension(context): Extension<RequestContext>) -> Response {

@@ -62,6 +62,27 @@ export function RoomPage({ roomId }: RoomPageProps) {
   }, [loadRoom])
 
   useEffect(() => {
+    let active = true
+
+    const intervalId = window.setInterval(() => {
+      void getRoom(roomId)
+        .then((response) => {
+          if (active) {
+            setRoomDetails(response.data)
+          }
+        })
+        .catch(() => {
+          // 后台刷新失败不影响当前会议页面，用户仍可手动刷新。
+        })
+    }, 5_000)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+    }
+  }, [roomId])
+
+  useEffect(() => {
     if (currentSession === null) {
       return
     }
@@ -249,6 +270,14 @@ export function RoomPage({ roomId }: RoomPageProps) {
             displayName={
               currentSession?.displayName ?? '未加入会议的访客'
             }
+            memberId={currentSession?.memberId ?? null}
+            remoteMembers={roomDetails.members
+              .filter((member) => member.id !== currentSession?.memberId)
+              .map((member) => ({
+                id: member.id,
+                displayName: member.display_name,
+              }))}
+            roomId={roomId}
           />
 
           <aside className="card bg-base-100 shadow-xl">

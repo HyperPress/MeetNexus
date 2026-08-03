@@ -12,6 +12,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/health': apiProxy,
+      '/media': apiProxy,
       '/rooms': apiProxy,
     },
   },

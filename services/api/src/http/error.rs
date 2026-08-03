@@ -22,6 +22,12 @@ pub enum ApiError {
     MemberNotFound {
         request_id: Uuid,
     },
+    MediaAccessDenied {
+        request_id: Uuid,
+    },
+    MediaServiceUnavailable {
+        request_id: Uuid,
+    },
     RouteNotFound {
         request_id: Uuid,
     },
@@ -55,6 +61,18 @@ impl ApiError {
                 StatusCode::NOT_FOUND,
                 "MEMBER_NOT_FOUND",
                 "成员不存在",
+                *request_id,
+            ),
+            Self::MediaAccessDenied { request_id } => (
+                StatusCode::FORBIDDEN,
+                "MEDIA_ACCESS_DENIED",
+                "当前成员无权操作该媒体会话",
+                *request_id,
+            ),
+            Self::MediaServiceUnavailable { request_id } => (
+                StatusCode::BAD_GATEWAY,
+                "MEDIA_SERVICE_UNAVAILABLE",
+                "媒体服务暂时不可用，请稍后重试",
                 *request_id,
             ),
             Self::RouteNotFound { request_id } => (

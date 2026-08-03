@@ -1,17 +1,31 @@
 import { useMeetingLocalMedia } from '../hooks/useMeetingLocalMedia'
 import { LocalVideoPreview } from './LocalVideoPreview'
+import { RemoteVideoPreview } from './RemoteVideoPreview'
 import { ScreenSharePreview } from './ScreenSharePreview'
 
 interface MeetingMediaStageProps {
   canControlMedia: boolean
   displayName: string
+  memberId: string | null
+  remoteMembers: Array<{
+    displayName: string
+    id: string
+  }>
+  roomId: string
 }
 
 export function MeetingMediaStage({
   canControlMedia,
   displayName,
+  memberId,
+  remoteMembers,
+  roomId,
 }: MeetingMediaStageProps) {
-  const media = useMeetingLocalMedia()
+  const media = useMeetingLocalMedia({
+    memberId,
+    remoteMemberIds: remoteMembers.map((member) => member.id),
+    roomId,
+  })
 
   return (
     <section className="space-y-5">
@@ -24,12 +38,12 @@ export function MeetingMediaStage({
               </h2>
 
               <p className="mt-1 text-sm text-neutral-content/70">
-                当前显示本机摄像头预览，远端音视频将在媒体接口完成后接入。
+                通过同源 WHIP/WHEP 接入 Live777，远端成员加入后会显示在下方。
               </p>
             </div>
 
-            <div className="badge badge-warning">
-              仅本地预览
+            <div className="badge badge-info">
+              {media.connectionStatus}
             </div>
           </div>
 
@@ -40,6 +54,21 @@ export function MeetingMediaStage({
               stream={media.localStream}
             />
           </div>
+
+          {Object.entries(media.remoteStreams).length > 0 && (
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {remoteMembers.map((member) => {
+                const stream = media.remoteStreams[member.id]
+                return stream === undefined ? null : (
+                  <RemoteVideoPreview
+                    displayName={member.displayName}
+                    key={member.id}
+                    stream={stream}
+                  />
+                )
+              })}
+            </div>
+          )}
 
           <div className="mt-3 flex items-center justify-between gap-3 rounded-box bg-black/30 px-4 py-3">
             <div className="min-w-0">
@@ -217,8 +246,8 @@ export function MeetingMediaStage({
           )}
 
           <p className="mt-3 text-center text-xs leading-5 text-base-content/60">
-            当前音视频和屏幕分享仅在本机预览，不会发送到其他成员，也不会直接访问
-            Live777。
+            摄像头和麦克风通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
+            Live777。屏幕分享当前仍只用于本地预览。
           </p>
         </div>
       </div>

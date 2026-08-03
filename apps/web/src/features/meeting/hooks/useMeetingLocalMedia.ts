@@ -5,12 +5,14 @@ import {
   useState,
 } from 'react'
 import {
+  enumerateLocalMediaDevices,
   getLocalMediaErrorMessage,
   getScreenShareInfo,
   setLocalTrackEnabled,
   startLocalMedia,
   startScreenShare,
   stopLocalMedia,
+  type LocalMediaDevices,
   type ScreenShareInfo,
 } from '../../../lib/media/localMedia'
 import {
@@ -27,6 +29,11 @@ interface MeetingMediaOptions {
   remoteScreenMemberIds: string[]
   roomId: string
   sessionToken: string | null
+}
+
+const emptyDevices: LocalMediaDevices = {
+  cameras: [],
+  microphones: [],
 }
 
 export function useMeetingLocalMedia({
@@ -56,11 +63,15 @@ export function useMeetingLocalMedia({
   const [microphoneEnabled, setMicrophoneEnabled] =
     useState(false)
   const [cameraMirrored, setCameraMirrored] = useState(true)
+  const [devices, setDevices] = useState<LocalMediaDevices>(emptyDevices)
+  const [selectedCameraId, setSelectedCameraId] = useState('')
+  const [selectedMicrophoneId, setSelectedMicrophoneId] = useState('')
 
   const [isStartingDevices, setIsStartingDevices] =
     useState(false)
   const [isStartingScreenShare, setIsStartingScreenShare] =
     useState(false)
+  const [isRefreshingDevices, setIsRefreshingDevices] = useState(false)
 
   const [mediaErrorMessage, setMediaErrorMessage] =
     useState<string | null>(null)
@@ -75,6 +86,24 @@ export function useMeetingLocalMedia({
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<
     Record<string, MediaStream>
   >({})
+
+  const refreshDevices = useCallback(async () => {
+    setIsRefreshingDevices(true)
+    try {
+      const availableDevices = await enumerateLocalMediaDevices()
+      if (mountedRef.current) {
+        setDevices(availableDevices)
+      }
+    } catch {
+      if (mountedRef.current) {
+        setDevices(emptyDevices)
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsRefreshingDevices(false)
+      }
+    }
+  }, [])
 
   const closePublishSession = useCallback(() => {
     const session = publishSessionRef.current
@@ -226,6 +255,10 @@ export function useMeetingLocalMedia({
     }
   }, [closePublishSession, closeScreenPublishSession])
 
+  useEffect(() => {
+    void refreshDevices()
+  }, [refreshDevices])
+
   const startDevices = useCallback(async () => {
     if (isStartingDevices) {
       return
@@ -236,7 +269,10 @@ export function useMeetingLocalMedia({
     setStatusMessage(null)
 
     try {
-      const nextStream = await startLocalMedia()
+      const nextStream = await startLocalMedia({
+        cameraId: selectedCameraId || undefined,
+        microphoneId: selectedMicrophoneId || undefined,
+      })
 
       if (!mountedRef.current) {
         stopLocalMedia(nextStream)
@@ -253,6 +289,7 @@ export function useMeetingLocalMedia({
       setMicrophoneEnabled(
         nextStream.getAudioTracks().length > 0,
       )
+      void refreshDevices()
       setStatusMessage('本地音视频设备已启动，正在连接媒体服务。')
       void publishLocalStream(nextStream)
     } catch (error) {
@@ -266,7 +303,13 @@ export function useMeetingLocalMedia({
         setIsStartingDevices(false)
       }
     }
-  }, [isStartingDevices, publishLocalStream])
+  }, [
+    isStartingDevices,
+    publishLocalStream,
+    refreshDevices,
+    selectedCameraId,
+    selectedMicrophoneId,
+  ])
 
   useEffect(() => {
     if (
@@ -503,8 +546,10 @@ export function useMeetingLocalMedia({
     cameraEnabled,
     cameraMirrored,
     connectionStatus,
+    devices,
     isStartingDevices,
     isStartingScreenShare,
+    isRefreshingDevices,
     localStream,
     mediaErrorMessage,
     microphoneEnabled,
@@ -513,7 +558,12 @@ export function useMeetingLocalMedia({
     screenStream,
     remoteStreams,
     remoteScreenStreams,
+    refreshDevices,
     statusMessage,
+    selectedCameraId,
+    selectedMicrophoneId,
+    setSelectedCameraId,
+    setSelectedMicrophoneId,
     startDevices,
     startScreenSharing,
     stopAllMedia,

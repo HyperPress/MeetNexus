@@ -8,6 +8,55 @@ const sessionToken = 'test-media-session-token'
 
 async function installIsolatedPeerConnection(page: Page) {
   await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      __meetNexusMediaConstraints?: MediaStreamConstraints[]
+    }
+    const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
+      navigator.mediaDevices,
+    )
+    testWindow.__meetNexusMediaConstraints = []
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+      configurable: true,
+      value: async (): Promise<MediaDeviceInfo[]> =>
+        [
+          {
+            deviceId: 'camera-front',
+            groupId: 'camera-group',
+            kind: 'videoinput',
+            label: '前置摄像头',
+            toJSON: () => ({}),
+          },
+          {
+            deviceId: 'camera-rear',
+            groupId: 'camera-group',
+            kind: 'videoinput',
+            label: '后置摄像头',
+            toJSON: () => ({}),
+          },
+          {
+            deviceId: 'microphone-built-in',
+            groupId: 'microphone-group',
+            kind: 'audioinput',
+            label: '内置麦克风',
+            toJSON: () => ({}),
+          },
+          {
+            deviceId: 'microphone-usb',
+            groupId: 'microphone-group',
+            kind: 'audioinput',
+            label: 'USB 麦克风',
+            toJSON: () => ({}),
+          },
+        ] as MediaDeviceInfo[],
+    })
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
+      configurable: true,
+      value: async (constraints: MediaStreamConstraints) => {
+        testWindow.__meetNexusMediaConstraints?.push(constraints)
+        return originalGetUserMedia({ audio: true, video: true })
+      },
+    })
+
     class IsolatedPeerConnection extends EventTarget {
       connectionState = 'connected'
       iceGatheringState = 'complete'
@@ -16,11 +65,11 @@ async function installIsolatedPeerConnection(page: Page) {
 
       constructor() {
         super()
-        const testWindow = window as typeof window & {
+        const peerConnectionWindow = window as typeof window & {
           __meetNexusPeerConnections?: IsolatedPeerConnection[]
         }
-        testWindow.__meetNexusPeerConnections ??= []
-        testWindow.__meetNexusPeerConnections.push(this)
+        peerConnectionWindow.__meetNexusPeerConnections ??= []
+        peerConnectionWindow.__meetNexusPeerConnections.push(this)
       }
 
       addTrack() {}
@@ -195,6 +244,11 @@ test.describe('MeetNexus 音视频媒体流程', () => {
     )
     await page.goto(`/#/rooms/${roomId}`)
 
+    await expect(page.getByLabel('摄像头设备')).toBeEnabled()
+    await expect(page.getByLabel('麦克风设备')).toBeEnabled()
+    await page.getByLabel('摄像头设备').selectOption('camera-rear')
+    await page.getByLabel('麦克风设备').selectOption('microphone-usb')
+
     const firstPublish = page.waitForRequest(
       (request) =>
         request.method() === 'POST' &&
@@ -209,6 +263,17 @@ test.describe('MeetNexus 音视频媒体流程', () => {
     await page.getByRole('button', { name: '启动音视频设备' }).click()
     await firstPublish
     await firstSubscribe
+
+    const mediaConstraints = await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __meetNexusMediaConstraints?: MediaStreamConstraints[]
+      }
+      return testWindow.__meetNexusMediaConstraints?.[0]
+    })
+    expect(mediaConstraints).toEqual({
+      audio: { deviceId: { exact: 'microphone-usb' } },
+      video: { deviceId: { exact: 'camera-rear' } },
+    })
 
     await expect(page.getByText('已连接', { exact: true })).toBeVisible()
     await expect(

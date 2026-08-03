@@ -141,6 +141,95 @@ export function MeetingMediaStage({
         className="card bg-base-100 shadow-xl"
       >
         <div className="card-body">
+          {canControlMedia && media.localStream === null && (
+            <section className="rounded-box border border-base-300 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">音视频设备</h3>
+                  <p className="mt-1 text-sm text-base-content/70">
+                    选择设备后再启动音视频。首次启动时浏览器会请求设备权限。
+                  </p>
+                </div>
+
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={media.isRefreshingDevices}
+                  onClick={() => {
+                    void media.refreshDevices()
+                  }}
+                  type="button"
+                >
+                  {media.isRefreshingDevices ? '正在刷新…' : '刷新设备列表'}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <fieldset className="fieldset">
+                  <label
+                    className="fieldset-legend"
+                    htmlFor="meeting-camera-device"
+                  >
+                    摄像头设备
+                  </label>
+                  <select
+                    className="select w-full"
+                    disabled={
+                      media.isRefreshingDevices ||
+                      media.devices.cameras.length === 0
+                    }
+                    id="meeting-camera-device"
+                    onChange={(event) => {
+                      media.setSelectedCameraId(event.target.value)
+                    }}
+                    value={media.selectedCameraId}
+                  >
+                    <option value="">系统默认摄像头</option>
+                    {media.devices.cameras.map((camera) => (
+                      <option key={camera.deviceId} value={camera.deviceId}>
+                        {camera.label}
+                      </option>
+                    ))}
+                  </select>
+                </fieldset>
+
+                <fieldset className="fieldset">
+                  <label
+                    className="fieldset-legend"
+                    htmlFor="meeting-microphone-device"
+                  >
+                    麦克风设备
+                  </label>
+                  <select
+                    className="select w-full"
+                    disabled={
+                      media.isRefreshingDevices ||
+                      media.devices.microphones.length === 0
+                    }
+                    id="meeting-microphone-device"
+                    onChange={(event) => {
+                      media.setSelectedMicrophoneId(event.target.value)
+                    }}
+                    value={media.selectedMicrophoneId}
+                  >
+                    <option value="">系统默认麦克风</option>
+                    {media.devices.microphones.map((microphone) => (
+                      <option
+                        key={microphone.deviceId}
+                        value={microphone.deviceId}
+                      >
+                        {microphone.label}
+                      </option>
+                    ))}
+                  </select>
+                </fieldset>
+              </div>
+
+              <p className="mt-3 text-xs text-base-content/60">
+                设备启动后如需切换，请先释放音视频设备，再重新选择并启动。
+              </p>
+            </section>
+          )}
+
           <div className="flex flex-wrap justify-center gap-3">
             {media.localStream === null ? (
               <button

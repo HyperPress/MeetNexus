@@ -54,6 +54,8 @@ Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至�
 
 录制回放文件根目录由 `RECORDING_STORAGE_ROOT` 指定，默认是仓库内本机 Live777 的 `tools/live777/bin/live777-v0.9.0-x86_64-pc-windows-msvc/storage`。部署时必须将它设为 Live777 recorder 实际写入的目录；不要把该目录公开为静态站点。浏览器只能携带会议成员 Bearer 令牌经 API 读取已停止录制的 MPD 和 `.m4s` 文件。
 
+回放使用浏览器原生 MediaSource，需使用支持 MP4/Opus MSE 的现代 Chromium 浏览器；会议页会在回放轨道不受支持时显示中文提示。
+
 ## 启动顺序
 
 1. 确认 Windows PostgreSQL 服务 `postgresql-x64-15` 正在运行。

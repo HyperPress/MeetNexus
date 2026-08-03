@@ -6,6 +6,7 @@ import {
   startRoomMemberRecording,
   stopRoomRecording,
 } from '../api/roomApi'
+import { RecordingPlayer } from './RecordingPlayer'
 
 interface RecordingPanelProps {
   canManage: boolean
@@ -186,6 +187,13 @@ export function RecordingPanel({
                     ? '录制中'
                     : `已停止：${formatDateTime(recording.stopped_at ?? recording.started_at)}`}
                 </p>
+                {recording.state === 'stopped' && (
+                  <RecordingPlayer
+                    recording={recording}
+                    roomId={roomId}
+                    sessionToken={sessionToken}
+                  />
+                )}
               </div>
             )
           })

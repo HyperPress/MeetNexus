@@ -23,7 +23,9 @@ export class ApiError extends Error {
 function createRequestHeaders(init: RequestInit): Headers {
   const headers = new Headers(init.headers)
 
-  headers.set('Accept', 'application/json')
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json')
+  }
 
   if (
     init.body !== undefined &&
@@ -147,6 +149,25 @@ export async function requestNoContent(
       response.status,
       response.headers.get('X-Request-Id'),
     )
+  }
+}
+
+export interface BinaryResponse {
+  body: ArrayBuffer
+  contentType: string | null
+}
+
+export async function requestBinary(
+  path: string,
+  init: RequestInit = {},
+): Promise<BinaryResponse> {
+  const response = await sendRequest(path, init)
+
+  await ensureSuccessfulResponse(response)
+
+  return {
+    body: await response.arrayBuffer(),
+    contentType: response.headers.get('Content-Type'),
   }
 }
 

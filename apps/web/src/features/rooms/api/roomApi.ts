@@ -1,4 +1,5 @@
 import {
+  requestBinary,
   requestJson,
   requestNoContent,
 } from '../../../lib/api/httpClient'
@@ -122,6 +123,23 @@ export function stopRoomRecording(
     {
       headers: { Authorization: `Bearer ${sessionToken}` },
       method: 'POST',
+    },
+  )
+}
+
+export function getRoomRecordingPlaybackFile(
+  roomId: string,
+  recordingId: string,
+  fileName: string,
+  sessionToken: string,
+) {
+  return requestBinary(
+    `${recordingPath(roomId)}/${encodeURIComponent(recordingId)}/playback/${encodeURIComponent(fileName)}`,
+    {
+      headers: {
+        Accept: 'application/dash+xml, video/iso.segment',
+        Authorization: `Bearer ${sessionToken}`,
+      },
     },
   )
 }

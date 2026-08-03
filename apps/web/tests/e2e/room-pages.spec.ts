@@ -479,6 +479,48 @@ test.describe('MeetNexus 房间入口页面', () => {
           configurable: true,
           value: IsolatedWebSocket,
         })
+        class TestSourceBuffer extends EventTarget {
+          appendBuffer() {
+            queueMicrotask(() => {
+              this.dispatchEvent(new Event('updateend'))
+            })
+          }
+        }
+        class TestMediaSource extends EventTarget {
+          static isTypeSupported() {
+            return true
+          }
+
+          readyState = 'closed'
+
+          constructor() {
+            super()
+            queueMicrotask(() => {
+              this.readyState = 'open'
+              this.dispatchEvent(new Event('sourceopen'))
+            })
+          }
+
+          addSourceBuffer() {
+            return new TestSourceBuffer()
+          }
+
+          endOfStream() {
+            this.readyState = 'ended'
+          }
+        }
+        Object.defineProperty(window, 'MediaSource', {
+          configurable: true,
+          value: TestMediaSource,
+        })
+        Object.defineProperty(URL, 'createObjectURL', {
+          configurable: true,
+          value: () => 'blob:meetnexus-recording',
+        })
+        Object.defineProperty(URL, 'revokeObjectURL', {
+          configurable: true,
+          value: () => {},
+        })
         testWindow.__meetNexusWebSockets = IsolatedWebSocket.instances
         sessionStorage.setItem(
           'meetnexus.room-session',
@@ -699,6 +741,32 @@ test.describe('MeetNexus 房间入口页面', () => {
           })
           return
         }
+        if (
+          url.pathname ===
+          `/rooms/${roomId}/recordings/${recordingId}/playback/manifest.mpd`
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/dash+xml',
+            body: `<?xml version="1.0"?><MPD><Period><AdaptationSet><Representation mimeType="audio/mp4" codecs="opus"><SegmentTemplate initialization="a_init.m4s" media="a_seg_$Number%04d$.m4s" startNumber="1"><SegmentTimeline><S t="0" d="96000" /></SegmentTimeline></SegmentTemplate></Representation></AdaptationSet></Period></MPD>`,
+          })
+          return
+        }
+        if (
+          url.pathname ===
+            `/rooms/${roomId}/recordings/${recordingId}/playback/a_init.m4s` ||
+          url.pathname ===
+            `/rooms/${roomId}/recordings/${recordingId}/playback/a_seg_0001.m4s`
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'video/iso.segment',
+            body: Buffer.from([0, 1, 2]),
+          })
+          return
+        }
         await route.fulfill({ status: 404 })
       },
     )
@@ -716,6 +784,9 @@ test.describe('MeetNexus 房间入口页面', () => {
     await expect(stopButton).toBeVisible()
     await stopButton.click()
     await expect(page.getByText('已停止：', { exact: false })).toBeVisible()
+
+    await page.getByRole('button', { name: '播放回放' }).click()
+    await expect(page.getByLabel('录制回放画面')).toBeVisible()
   })
 
   test('没有房间成员身份时禁用媒体控制', async ({

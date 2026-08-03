@@ -32,7 +32,7 @@
 
 ## 进行中
 
-- 浏览器 DASH 回放播放器尚未实现；受保护的回放文件访问已完成。
+- 等待在具备实体摄像头、麦克风和扬声器的两台浏览器上完成手动音视频验收；自动化与隔离 Chromium 媒体验收已完成。
 
 ## 下一步
 
@@ -66,6 +66,8 @@
 - 2026-07-31：会议房间界面与本地媒体控制修改通过前端 Oxlint、TypeScript/Vite 生产构建和 14 项 Playwright 端到端测试；自动化媒体测试使用隔离的 Chromium 测试设备，真实摄像头、麦克风与系统屏幕选择器仍需手动验证。当前媒体能力仅限本机预览，尚未接入 WHIP/WHEP。
 
 ## 最近变更
+
+- 2026-08-03：会议页接入不新增第三方依赖的原生 MediaSource DASH 回放播放器。播放器通过成员 Bearer 令牌按需读取 MPD、初始化分片和媒体分片；Playwright 覆盖受保护文件请求与缓冲流程。使用真实 Live777 录制文件完成 Chromium MediaSource 验收，音频轨道已成功追加并得到 3.52 秒有效时长。
 
 - 2026-08-03：新增 `scripts/start-api.ps1`，从本机 `.env` 加载允许的 API 配置并将 `RECORDING_STORAGE_ROOT` 转为绝对路径。使用隔离 Chromium 虚拟设备完成真实 WHIP 发布、Live777 录制、停止和受保护 MPD 文件读取验收：回放接口返回 `200`、`application/dash+xml`、`private, no-store`，且清单非空。
 

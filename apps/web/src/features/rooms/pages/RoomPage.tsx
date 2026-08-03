@@ -41,6 +41,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
     string | null
   >(null)
   const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
+  const [mediaMemberIds, setMediaMemberIds] = useState<string[]>([])
 
   const currentSession =
     roomSession?.roomId === roomId ? roomSession : null
@@ -91,6 +92,18 @@ export function RoomPage({ roomId }: RoomPageProps) {
           }
           if (event.event === 'screen_share_stopped') {
             setScreenShareMemberIds((memberIds) =>
+              memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
+          if (event.event === 'media_started') {
+            setMediaMemberIds((memberIds) =>
+              memberIds.includes(event.member_id)
+                ? memberIds
+                : [...memberIds, event.member_id],
+            )
+          }
+          if (event.event === 'media_stopped') {
+            setMediaMemberIds((memberIds) =>
               memberIds.filter((memberId) => memberId !== event.member_id),
             )
           }
@@ -304,7 +317,11 @@ export function RoomPage({ roomId }: RoomPageProps) {
             }
             memberId={currentSession?.memberId ?? null}
             remoteMembers={roomDetails.members
-              .filter((member) => member.id !== currentSession?.memberId)
+              .filter(
+                (member) =>
+                  member.id !== currentSession?.memberId &&
+                  mediaMemberIds.includes(member.id),
+              )
               .map((member) => ({
                 id: member.id,
                 displayName: member.display_name,

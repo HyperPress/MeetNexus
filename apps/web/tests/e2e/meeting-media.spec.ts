@@ -66,6 +66,20 @@ async function installIsolatedPeerConnection(page: Page) {
       value: IsolatedPeerConnection,
     })
     class IsolatedWebSocket extends EventTarget {
+      constructor() {
+        super()
+        queueMicrotask(() => {
+          const event = new Event('message')
+          Object.defineProperty(event, 'data', {
+            value: JSON.stringify({
+              event: 'media_started',
+              member_id: 'ca5abed4-4635-4ab4-a23d-c2b9f1a8ad79',
+            }),
+          })
+          this.dispatchEvent(event)
+        })
+      }
+
       close() {
         this.dispatchEvent(new Event('close'))
       }

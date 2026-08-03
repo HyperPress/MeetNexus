@@ -27,6 +27,7 @@
 - 完成房间 WebSocket 实时事件：成员以受保护的子协议订阅会议事件，成员加入或离开时前端即时刷新成员列表；事件积压时请求重新同步，成员列表不再按 5 秒轮询。
 - 完成屏幕共享独立发布与远端订阅：屏幕共享通过专用 WHIP/WHEP 路由、独立 Live777 流 ID 和独立媒体会话关闭地址发布；房间事件驱动其他成员自动订阅、展示并在停止共享时清理远端屏幕画面。
 - 完成服务就绪探测：`/health` 保持 API 进程存活语义，新增 `/ready` 并并发验证 PostgreSQL、Redis 与 Live777；依赖不可用时返回统一的 503 错误。同步修正屏幕共享订阅者关闭 WHEP 会话时误广播停止事件的问题。
+- 完成主媒体发布状态同步：主媒体开始/停止由房间 WebSocket 广播并维护连接快照，前端只订阅正在发布的远端成员，避免在空流上提前协商导致后续轨道无法到达。
 
 ## 进行中
 
@@ -59,6 +60,7 @@
 - 2026-08-03：屏幕共享独立流修改通过 Rust 格式检查、Clippy、后端 14 个单元测试和 9 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试；1 个真实 PostgreSQL/Redis 测试按设计跳过。
 - 2026-08-03：远端屏幕订阅修改通过 Rust 格式检查、Clippy、后端 14 个单元测试和 9 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试；1 个真实 PostgreSQL/Redis 测试按设计跳过。
 - 2026-08-03：服务就绪探测与屏幕共享事件边界修正通过 Rust 格式检查、Clippy、14 个后端单元测试、10 个 HTTP 测试，以及真实 PostgreSQL/Redis 存储测试；本机 `/health` 与 `/ready` 均返回 200，`/ready` 确认三项依赖均已就绪。隔离 HTTP 测试覆盖依赖不可连接时的统一 503 响应，且依赖探测超时限制为 2 秒。
+- 2026-08-03：主媒体状态事件修改通过 Rust 格式检查、Clippy、16 个后端单元测试、10 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试。使用两个独立 Chromium 虚拟摄像头/麦克风浏览器连接当前本机 API 与 Live777，双向 WHIP/WHEP 均返回 201，双方页面均出现带 2 条音视频轨道的远端流。
 - 2026-07-31：会议房间界面与本地媒体控制修改通过前端 Oxlint、TypeScript/Vite 生产构建和 14 项 Playwright 端到端测试；自动化媒体测试使用隔离的 Chromium 测试设备，真实摄像头、麦克风与系统屏幕选择器仍需手动验证。当前媒体能力仅限本机预览，尚未接入 WHIP/WHEP。
 
 ## 最近变更
@@ -80,6 +82,7 @@
 - 2026-08-03：新增 `services/api/src/http/auth.rs`，为房间成员签发和校验短期 JWT；更新房间和媒体 API 的 OpenAPI 安全契约、前端会话存储与 Bearer 请求头，并在 `.env.example` 中增加 `AUTH_JWT_SECRET`。
 - 2026-08-03：新增 `services/api/src/http/events.rs` 与前端房间事件连接，更新 WebSocket OpenAPI 契约、Vite WebSocket 代理和房间事件端到端测试。
 - 2026-08-03：新增 `/ready` OpenAPI 契约与 API 依赖就绪探测，更新本机运行说明；修正屏幕共享订阅者回收 WHEP 会话时误广播停止事件。
+- 2026-08-03：新增主媒体开始/停止 WebSocket 事件及连接快照，前端据此延后 WHEP 订阅到远端媒体已发布之后。
 - 2026-08-03：新增屏幕共享独立 WHIP/WHEP 与会话关闭契约，前端屏幕分享开始后通过单独媒体流发布，停止或页面卸载时回收该会话。
 - 2026-08-03：屏幕共享开始/停止事件接入房间 WebSocket，前端根据事件自动建立或清理独立 WHEP 订阅，并显示远端屏幕画面。
 - 修改文件：`apps/web/src/schemas/room.ts`、`apps/web/src/lib/api/httpClient.ts`、`apps/web/src/features/rooms/api/roomApi.ts`、`apps/web/src/features/rooms/session/roomSession.ts`、`apps/web/src/features/rooms/pages/CreateRoomPage.tsx`、`apps/web/src/features/rooms/pages/JoinRoomPage.tsx`、`apps/web/src/features/rooms/pages/RoomPage.tsx`、`apps/web/src/app/AppRouter.tsx`、`apps/web/tests/e2e/room-pages.spec.ts`、`apps/web/vite.config.ts`、`docs/ARCHITECTURE.md`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。

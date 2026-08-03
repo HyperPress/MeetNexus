@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -24,7 +24,19 @@ const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 #[derive(Clone, Default)]
 pub struct RoomEventHub {
-    channels: Arc<Mutex<HashMap<Uuid, broadcast::Sender<RoomEvent>>>>,
+    rooms: Arc<Mutex<HashMap<Uuid, RoomEventState>>>,
+}
+
+struct RoomEventState {
+    active_media_member_ids: HashSet<Uuid>,
+    active_screen_member_ids: HashSet<Uuid>,
+    sender: broadcast::Sender<RoomEvent>,
+}
+
+#[derive(Default)]
+pub struct RoomMediaSnapshot {
+    active_media_member_ids: Vec<Uuid>,
+    active_screen_member_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Serialize)]
@@ -32,6 +44,8 @@ pub struct RoomEventHub {
 pub enum RoomEvent {
     MemberJoined { member: RoomMember },
     MemberLeft { member_id: Uuid },
+    MediaStarted { member_id: Uuid },
+    MediaStopped { member_id: Uuid },
     ScreenShareStarted { member_id: Uuid },
     ScreenShareStopped { member_id: Uuid },
     ResyncRequired,
@@ -39,20 +53,49 @@ pub enum RoomEvent {
 
 impl RoomEventHub {
     pub fn publish(&self, room_id: Uuid, event: RoomEvent) {
-        let sender = self.channel(room_id);
+        let sender = {
+            let mut rooms = self.rooms.lock().expect("房间事件锁不应被毒化");
+            let room = rooms.entry(room_id).or_insert_with(new_room_event_state);
+            match &event {
+                RoomEvent::MediaStarted { member_id } => {
+                    room.active_media_member_ids.insert(*member_id);
+                }
+                RoomEvent::MediaStopped { member_id } => {
+                    room.active_media_member_ids.remove(member_id);
+                }
+                RoomEvent::ScreenShareStarted { member_id } => {
+                    room.active_screen_member_ids.insert(*member_id);
+                }
+                RoomEvent::ScreenShareStopped { member_id } => {
+                    room.active_screen_member_ids.remove(member_id);
+                }
+                RoomEvent::MemberJoined { .. }
+                | RoomEvent::MemberLeft { .. }
+                | RoomEvent::ResyncRequired => {}
+            }
+            room.sender.clone()
+        };
         let _ = sender.send(event);
     }
 
-    pub fn subscribe(&self, room_id: Uuid) -> broadcast::Receiver<RoomEvent> {
-        self.channel(room_id).subscribe()
+    pub fn subscribe(&self, room_id: Uuid) -> (broadcast::Receiver<RoomEvent>, RoomMediaSnapshot) {
+        let mut rooms = self.rooms.lock().expect("房间事件锁不应被毒化");
+        let room = rooms.entry(room_id).or_insert_with(new_room_event_state);
+        (
+            room.sender.subscribe(),
+            RoomMediaSnapshot {
+                active_media_member_ids: room.active_media_member_ids.iter().copied().collect(),
+                active_screen_member_ids: room.active_screen_member_ids.iter().copied().collect(),
+            },
+        )
     }
+}
 
-    fn channel(&self, room_id: Uuid) -> broadcast::Sender<RoomEvent> {
-        let mut channels = self.channels.lock().expect("房间事件锁不应被毒化");
-        channels
-            .entry(room_id)
-            .or_insert_with(|| broadcast::channel(EVENT_CHANNEL_CAPACITY).0)
-            .clone()
+fn new_room_event_state() -> RoomEventState {
+    RoomEventState {
+        active_media_member_ids: HashSet::new(),
+        active_screen_member_ids: HashSet::new(),
+        sender: broadcast::channel(EVENT_CHANNEL_CAPACITY).0,
     }
 }
 
@@ -100,15 +143,23 @@ pub async fn subscribe(
         });
     }
 
-    let receiver = state.event_hub.subscribe(room_id);
+    let (receiver, snapshot) = state.event_hub.subscribe(room_id);
     Ok(websocket.protocols([protocol]).on_upgrade(move |socket| {
-        handle_socket(socket, receiver, context.request_id(), room_id, member_id)
+        handle_socket(
+            socket,
+            receiver,
+            snapshot,
+            context.request_id(),
+            room_id,
+            member_id,
+        )
     }))
 }
 
 async fn handle_socket(
     mut socket: WebSocket,
     mut receiver: broadcast::Receiver<RoomEvent>,
+    snapshot: RoomMediaSnapshot,
     request_id: Uuid,
     room_id: Uuid,
     member_id: Uuid,
@@ -122,6 +173,23 @@ async fn handle_socket(
         error_code = "-",
     );
 
+    for member_id in snapshot.active_media_member_ids {
+        if send_event(&mut socket, RoomEvent::MediaStarted { member_id })
+            .await
+            .is_err()
+        {
+            return;
+        }
+    }
+    for member_id in snapshot.active_screen_member_ids {
+        if send_event(&mut socket, RoomEvent::ScreenShareStarted { member_id })
+            .await
+            .is_err()
+        {
+            return;
+        }
+    }
+
     loop {
         tokio::select! {
             event = receiver.recv() => {
@@ -130,11 +198,7 @@ async fn handle_socket(
                     Err(broadcast::error::RecvError::Lagged(_)) => RoomEvent::ResyncRequired,
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
-                let payload = match serde_json::to_string(&event) {
-                    Ok(payload) => payload,
-                    Err(_) => break,
-                };
-                if socket.send(Message::Text(payload.into())).await.is_err() {
+                if send_event(&mut socket, event).await.is_err() {
                     break;
                 }
             }
@@ -162,6 +226,14 @@ async fn handle_socket(
     );
 }
 
+async fn send_event(socket: &mut WebSocket, event: RoomEvent) -> Result<(), ()> {
+    let payload = serde_json::to_string(&event).map_err(|_| ())?;
+    socket
+        .send(Message::Text(payload.into()))
+        .await
+        .map_err(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use uuid::Uuid;
@@ -172,7 +244,8 @@ mod tests {
     async fn publishes_events_to_room_specific_subscribers() {
         let hub = RoomEventHub::default();
         let room_id = Uuid::new_v4();
-        let mut receiver = hub.subscribe(room_id);
+        let (mut receiver, snapshot) = hub.subscribe(room_id);
+        assert!(snapshot.active_media_member_ids.is_empty());
         hub.publish(
             room_id,
             RoomEvent::MemberLeft {
@@ -184,5 +257,39 @@ mod tests {
             receiver.recv().await,
             Ok(RoomEvent::MemberLeft { .. })
         ));
+    }
+
+    #[test]
+    fn retains_active_media_and_screen_share_for_new_subscribers() {
+        let hub = RoomEventHub::default();
+        let room_id = Uuid::new_v4();
+        let media_member_id = Uuid::new_v4();
+        let screen_member_id = Uuid::new_v4();
+
+        hub.publish(
+            room_id,
+            RoomEvent::MediaStarted {
+                member_id: media_member_id,
+            },
+        );
+        hub.publish(
+            room_id,
+            RoomEvent::ScreenShareStarted {
+                member_id: screen_member_id,
+            },
+        );
+        let (_, snapshot) = hub.subscribe(room_id);
+
+        assert_eq!(snapshot.active_media_member_ids, vec![media_member_id]);
+        assert_eq!(snapshot.active_screen_member_ids, vec![screen_member_id]);
+
+        hub.publish(
+            room_id,
+            RoomEvent::MediaStopped {
+                member_id: media_member_id,
+            },
+        );
+        let (_, snapshot) = hub.subscribe(room_id);
+        assert!(snapshot.active_media_member_ids.is_empty());
     }
 }

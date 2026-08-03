@@ -76,6 +76,14 @@ export const RoomEventSchema = z.discriminatedUnion('event', [
     member_id: UuidSchema,
   }),
   z.strictObject({
+    event: z.literal('media_started'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('media_stopped'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
     event: z.literal('screen_share_started'),
     member_id: UuidSchema,
   }),

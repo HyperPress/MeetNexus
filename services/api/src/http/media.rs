@@ -155,12 +155,11 @@ async fn publish_with_kind(
         kind,
         "media_whip_published",
     )?;
-    if matches!(kind, StreamKind::Screen) {
-        state.event_hub.publish(
-            room_id,
-            super::events::RoomEvent::ScreenShareStarted { member_id },
-        );
-    }
+    let event = match kind {
+        StreamKind::Camera => super::events::RoomEvent::MediaStarted { member_id },
+        StreamKind::Screen => super::events::RoomEvent::ScreenShareStarted { member_id },
+    };
+    state.event_hub.publish(room_id, event);
     Ok(answer)
 }
 
@@ -365,25 +364,24 @@ async fn close_session_with_kind(
         event = "media_session_closed",
         error_code = "-",
     );
-    if should_broadcast_screen_share_stopped(kind, member_id, stream_member_id) {
-        state.event_hub.publish(
-            room_id,
-            super::events::RoomEvent::ScreenShareStopped {
+    if should_broadcast_publisher_media_stopped(member_id, stream_member_id) {
+        let event = match kind {
+            StreamKind::Camera => super::events::RoomEvent::MediaStopped {
                 member_id: stream_member_id,
             },
-        );
+            StreamKind::Screen => super::events::RoomEvent::ScreenShareStopped {
+                member_id: stream_member_id,
+            },
+        };
+        state.event_hub.publish(room_id, event);
     }
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn should_broadcast_screen_share_stopped(
-    kind: StreamKind,
-    member_id: Uuid,
-    stream_member_id: Uuid,
-) -> bool {
-    // 只有屏幕流发布者关闭自身的 WHIP 会话时，才代表共享已结束。
-    // 订阅者关闭 WHEP 会话只是离开观看，不能让房间内其他成员丢失共享状态。
-    matches!(kind, StreamKind::Screen) && member_id == stream_member_id
+fn should_broadcast_publisher_media_stopped(member_id: Uuid, stream_member_id: Uuid) -> bool {
+    // 只有发布者关闭自身的 WHIP 会话时，才代表该媒体流已结束。
+    // 订阅者关闭 WHEP 会话只是离开观看，不能影响其他成员的媒体状态。
+    member_id == stream_member_id
 }
 
 async fn authorize_member(
@@ -563,27 +561,18 @@ fn log_media_error(
 mod tests {
     use uuid::Uuid;
 
-    use super::{StreamKind, should_broadcast_screen_share_stopped};
+    use super::should_broadcast_publisher_media_stopped;
 
     #[test]
-    fn only_screen_publisher_closing_its_session_stops_the_share() {
+    fn only_publisher_closing_its_session_stops_a_media_stream() {
         let publisher = Uuid::new_v4();
         let subscriber = Uuid::new_v4();
 
-        assert!(should_broadcast_screen_share_stopped(
-            StreamKind::Screen,
-            publisher,
-            publisher
+        assert!(should_broadcast_publisher_media_stopped(
+            publisher, publisher
         ));
-        assert!(!should_broadcast_screen_share_stopped(
-            StreamKind::Screen,
-            subscriber,
-            publisher
-        ));
-        assert!(!should_broadcast_screen_share_stopped(
-            StreamKind::Camera,
-            publisher,
-            publisher
+        assert!(!should_broadcast_publisher_media_stopped(
+            subscriber, publisher
         ));
     }
 }

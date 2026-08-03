@@ -167,7 +167,7 @@ paths:
     get:
       operationId: subscribeRoomEvents
       summary: 订阅会议实时事件
-      description: 通过 WebSocket 接收成员加入和离开事件。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
+      description: 通过 WebSocket 接收成员、主媒体和屏幕共享事件。连接建立后会先下发当前正在发布主媒体或屏幕共享的成员快照，避免错过已开始的媒体。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
       tags:
         - 房间
       security:
@@ -713,6 +713,8 @@ components:
       oneOf:
         - $ref: "#/components/schemas/RoomMemberJoinedEvent"
         - $ref: "#/components/schemas/RoomMemberLeftEvent"
+        - $ref: "#/components/schemas/RoomMediaStartedEvent"
+        - $ref: "#/components/schemas/RoomMediaStoppedEvent"
         - $ref: "#/components/schemas/RoomScreenShareStartedEvent"
         - $ref: "#/components/schemas/RoomScreenShareStoppedEvent"
         - $ref: "#/components/schemas/RoomResyncRequiredEvent"
@@ -750,6 +752,28 @@ components:
         event:
           type: string
           enum: [resync_required]
+    RoomMediaStartedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [media_started]
+        member_id:
+          type: string
+          format: uuid
+    RoomMediaStoppedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [media_stopped]
+        member_id:
+          type: string
+          format: uuid
     RoomScreenShareStartedEvent:
       type: object
       additionalProperties: false

@@ -25,6 +25,12 @@ pub enum ApiError {
     RecordingNotFound {
         request_id: Uuid,
     },
+    RecordingNotReady {
+        request_id: Uuid,
+    },
+    RecordingFileUnavailable {
+        request_id: Uuid,
+    },
     SessionAuthenticationRequired {
         request_id: Uuid,
     },
@@ -79,6 +85,18 @@ impl ApiError {
                 StatusCode::NOT_FOUND,
                 "RECORDING_NOT_FOUND",
                 "录制不存在或不属于当前会议",
+                *request_id,
+            ),
+            Self::RecordingNotReady { request_id } => (
+                StatusCode::CONFLICT,
+                "RECORDING_NOT_READY",
+                "录制尚未停止或回放文件尚未就绪",
+                *request_id,
+            ),
+            Self::RecordingFileUnavailable { request_id } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "RECORDING_FILE_UNAVAILABLE",
+                "录制文件暂时不可读取，请稍后重试",
                 *request_id,
             ),
             Self::SessionAuthenticationRequired { request_id } => (

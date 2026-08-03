@@ -52,6 +52,8 @@ $env:RUST_LOG = "api=info,tower_http=info"
 
 Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至少 32 个字符的随机 `AUTH_JWT_SECRET`，用于签发房间成员会话令牌；禁止提交真实密码、Token 或签名密钥。
 
+录制回放文件根目录由 `RECORDING_STORAGE_ROOT` 指定，默认是仓库内本机 Live777 的 `tools/live777/bin/live777-v0.9.0-x86_64-pc-windows-msvc/storage`。部署时必须将它设为 Live777 recorder 实际写入的目录；不要把该目录公开为静态站点。浏览器只能携带会议成员 Bearer 令牌经 API 读取已停止录制的 MPD 和 `.m4s` 文件。
+
 ## 启动顺序
 
 1. 确认 Windows PostgreSQL 服务 `postgresql-x64-15` 正在运行。

@@ -278,6 +278,63 @@ paths:
           $ref: "#/components/responses/RecordingNotFound"
         "502":
           $ref: "#/components/responses/MediaServiceUnavailable"
+  /rooms/{room_id}/recordings/{recording_id}/playback/{file_name}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: recording_id
+        in: path
+        required: true
+        description: MeetNexus 录制编号。
+        schema:
+          type: string
+          format: uuid
+      - name: file_name
+        in: path
+        required: true
+        description: DASH 清单或与该清单同目录的初始化/媒体分片文件名；不接受目录、绝对路径或 `..`。
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 255
+    get:
+      operationId: getRoomRecordingPlaybackFile
+      summary: 读取录制回放文件
+      description: 仅持有目标会议成员令牌的成员可读取已停止录制的 DASH MPD 或 `.m4s` 分片。服务端根据录制元数据和录制根目录解析文件，客户端不得访问或拼接服务器文件系统路径。
+      tags:
+        - 录制
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 录制回放文件
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              example: private, no-store
+          content:
+            application/dash+xml:
+              schema:
+                type: string
+                format: binary
+            video/iso.segment:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+        "404":
+          $ref: "#/components/responses/RecordingNotFound"
+        "409":
+          $ref: "#/components/responses/RecordingNotReady"
+        "503":
+          $ref: "#/components/responses/RecordingFileUnavailable"
   /media/whip/{room_id}/{member_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -608,6 +665,24 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     RecordingNotFound:
       description: 录制不存在或不属于目标会议
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingNotReady:
+      description: 录制仍在进行或尚未生成回放文件
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingFileUnavailable:
+      description: 录制文件存储未配置、不可用或文件读取失败
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"

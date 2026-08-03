@@ -8,7 +8,8 @@ use api::{
     },
     infrastructure::{
         live777::Live777Client, postgres::PgRoomRepository,
-        postgres_recordings::PgRecordingRepository, redis_presence::RedisPresenceRepository,
+        postgres_recordings::PgRecordingRepository, recording_storage::RecordingFileStorage,
+        redis_presence::RedisPresenceRepository,
     },
     telemetry,
 };
@@ -77,6 +78,7 @@ async fn main() {
     let recordings_state = api::http::recordings::RecordingApiState {
         live777: live777.clone(),
         recordings: PgRecordingRepository::new(database.clone()),
+        recording_files: RecordingFileStorage::new(config.recording_storage_root.clone()),
         rooms: state.rooms.clone(),
         session_tokens: state.session_tokens.clone(),
     };

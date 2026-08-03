@@ -1,7 +1,8 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use chrono::Utc;
@@ -11,8 +12,10 @@ use crate::{
     application::{RecordingRepository, RoomRepository},
     domain::{Recording, RecordingState},
     infrastructure::{
-        live777::Live777Client, postgres::PgRoomRepository,
+        live777::Live777Client,
+        postgres::PgRoomRepository,
         postgres_recordings::PgRecordingRepository,
+        recording_storage::{RecordingFileError, RecordingFileStorage},
     },
 };
 
@@ -27,6 +30,7 @@ use super::{
 pub struct RecordingApiState {
     pub live777: Live777Client,
     pub recordings: PgRecordingRepository,
+    pub recording_files: RecordingFileStorage,
     pub rooms: PgRoomRepository,
     pub session_tokens: SessionTokenService,
 }
@@ -41,6 +45,10 @@ pub fn router(state: RecordingApiState) -> Router {
         .route(
             "/rooms/{room_id}/recordings/{recording_id}/stop",
             post(stop_recording),
+        )
+        .route(
+            "/rooms/{room_id}/recordings/{recording_id}/playback/{file_name}",
+            get(read_playback_file),
         )
         .with_state(state)
         .layer(axum::middleware::from_fn(request_context::attach))
@@ -184,6 +192,70 @@ async fn stop_recording(
         data: stopped,
         request_id: context.request_id(),
     }))
+}
+
+async fn read_playback_file(
+    State(state): State<RecordingApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((room_id, recording_id, file_name)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let room_id = parse_id(&room_id, context.request_id())?;
+    let recording_id = parse_id(&recording_id, context.request_id())?;
+    let reader_id =
+        authorize_room_member(&state, room_id, &headers, context.request_id(), false).await?;
+    let recording = state
+        .recordings
+        .find_recording(room_id, recording_id)
+        .await
+        .map_err(|_| ApiError::Internal {
+            request_id: context.request_id(),
+        })?
+        .ok_or(ApiError::RecordingNotFound {
+            request_id: context.request_id(),
+        })?;
+    if recording.state != RecordingState::Stopped {
+        return Err(ApiError::RecordingNotReady {
+            request_id: context.request_id(),
+        });
+    }
+    let mpd_path = recording
+        .mpd_path
+        .as_deref()
+        .ok_or(ApiError::RecordingNotReady {
+            request_id: context.request_id(),
+        })?;
+    let file = state
+        .recording_files
+        .read(mpd_path, &file_name)
+        .await
+        .map_err(|error| match error {
+            RecordingFileError::InvalidPath | RecordingFileError::NotFound => {
+                ApiError::RecordingNotFound {
+                    request_id: context.request_id(),
+                }
+            }
+            RecordingFileError::Unavailable => ApiError::RecordingFileUnavailable {
+                request_id: context.request_id(),
+            },
+        })?;
+    log_recording(
+        context.request_id(),
+        room_id,
+        reader_id,
+        &stream_id(room_id, recording.member_id),
+        "recording_playback_read",
+    );
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, file.content_type),
+            (header::CACHE_CONTROL, "private, no-store"),
+            (header::CONTENT_DISPOSITION, "inline"),
+        ],
+        file.bytes,
+    )
+        .into_response())
 }
 
 async fn authorize_room_member(

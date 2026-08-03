@@ -21,6 +21,7 @@ pub struct SessionTokenService {
 pub struct AuthenticatedMember {
     room_id: Uuid,
     member_id: Uuid,
+    role: MemberRole,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -111,6 +112,7 @@ impl SessionTokenService {
         Ok(AuthenticatedMember {
             room_id: claims.room_id,
             member_id: claims.member_id,
+            role: claims.role,
         })
     }
 }
@@ -126,6 +128,10 @@ impl AuthenticatedMember {
 
     pub fn belongs_to_room(self, room_id: Uuid) -> bool {
         self.room_id == room_id
+    }
+
+    pub fn is_host(self) -> bool {
+        self.role == MemberRole::Host
     }
 }
 

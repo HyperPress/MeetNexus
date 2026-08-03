@@ -3,6 +3,7 @@ mod error;
 pub mod events;
 pub mod health;
 pub mod media;
+pub mod recordings;
 mod request_context;
 mod response;
 pub mod rooms;
@@ -46,6 +47,16 @@ pub fn router_with_rooms_media_and_readiness(
 ) -> Router {
     router_with_rooms_and_media(rooms_state, media_state)
         .merge(router_with_readiness(readiness_state))
+}
+
+pub fn router_with_rooms_media_recordings_and_readiness(
+    rooms_state: rooms::RoomApiState,
+    media_state: media::MediaApiState,
+    recordings_state: recordings::RecordingApiState,
+    readiness_state: health::ReadinessApiState,
+) -> Router {
+    router_with_rooms_media_and_readiness(rooms_state, media_state, readiness_state)
+        .merge(recordings::router(recordings_state))
 }
 
 pub fn router_with_readiness(readiness_state: health::ReadinessApiState) -> Router {

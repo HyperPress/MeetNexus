@@ -22,6 +22,9 @@ pub enum ApiError {
     MemberNotFound {
         request_id: Uuid,
     },
+    RecordingNotFound {
+        request_id: Uuid,
+    },
     SessionAuthenticationRequired {
         request_id: Uuid,
     },
@@ -70,6 +73,12 @@ impl ApiError {
                 StatusCode::NOT_FOUND,
                 "MEMBER_NOT_FOUND",
                 "成员不存在",
+                *request_id,
+            ),
+            Self::RecordingNotFound { request_id } => (
+                StatusCode::NOT_FOUND,
+                "RECORDING_NOT_FOUND",
+                "录制不存在或不属于当前会议",
                 *request_id,
             ),
             Self::SessionAuthenticationRequired { request_id } => (

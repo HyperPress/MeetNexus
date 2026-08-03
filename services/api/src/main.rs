@@ -7,7 +7,8 @@ use api::{
         rooms::RoomApiState,
     },
     infrastructure::{
-        live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
+        live777::Live777Client, postgres::PgRoomRepository,
+        postgres_recordings::PgRecordingRepository, redis_presence::RedisPresenceRepository,
     },
     telemetry,
 };
@@ -73,12 +74,23 @@ async fn main() {
         session_tokens: state.session_tokens.clone(),
         event_hub: state.event_hub.clone(),
     };
+    let recordings_state = api::http::recordings::RecordingApiState {
+        live777: live777.clone(),
+        recordings: PgRecordingRepository::new(database.clone()),
+        rooms: state.rooms.clone(),
+        session_tokens: state.session_tokens.clone(),
+    };
 
     let readiness_state = ReadinessApiState::new(database, redis, live777);
 
     if let Err(error) = axum::serve(
         listener,
-        api::app_with_rooms_media_and_readiness(state, media_state, readiness_state),
+        api::app_with_rooms_media_recordings_and_readiness(
+            state,
+            media_state,
+            recordings_state,
+            readiness_state,
+        ),
     )
     .await
     {

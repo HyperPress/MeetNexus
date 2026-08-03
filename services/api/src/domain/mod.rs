@@ -52,6 +52,43 @@ pub struct RoomDetails {
     pub members: Vec<RoomMember>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct Recording {
+    pub id: Uuid,
+    pub room_id: RoomId,
+    pub member_id: MemberId,
+    pub started_by: MemberId,
+    pub live777_record_id: Option<String>,
+    pub mpd_path: Option<String>,
+    pub state: RecordingState,
+    pub started_at: DateTime<Utc>,
+    pub stopped_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordingState {
+    Recording,
+    Stopped,
+}
+
+impl RecordingState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Recording => "recording",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, DomainError> {
+        match value {
+            "recording" => Ok(Self::Recording),
+            "stopped" => Ok(Self::Stopped),
+            _ => Err(DomainError::InvalidRecordingState),
+        }
+    }
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DomainError {
     #[error("会议主题不能为空且不能超过 80 个字符")]
@@ -60,6 +97,8 @@ pub enum DomainError {
     InvalidDisplayName,
     #[error("成员角色无效")]
     InvalidMemberRole,
+    #[error("录制状态无效")]
+    InvalidRecordingState,
 }
 
 pub fn validate_room_title(value: &str) -> Result<String, DomainError> {

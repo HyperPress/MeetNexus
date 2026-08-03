@@ -71,6 +71,7 @@ export function useMeetingLocalMedia({
     useState(false)
   const [isStartingScreenShare, setIsStartingScreenShare] =
     useState(false)
+  const [isIdentifyingDevices, setIsIdentifyingDevices] = useState(false)
   const [isRefreshingDevices, setIsRefreshingDevices] = useState(false)
 
   const [mediaErrorMessage, setMediaErrorMessage] =
@@ -258,6 +259,31 @@ export function useMeetingLocalMedia({
   useEffect(() => {
     void refreshDevices()
   }, [refreshDevices])
+
+  const identifyDevices = useCallback(async () => {
+    if (isIdentifyingDevices) {
+      return
+    }
+
+    setIsIdentifyingDevices(true)
+    setMediaErrorMessage(null)
+    try {
+      const permissionStream = await startLocalMedia()
+      stopLocalMedia(permissionStream)
+      await refreshDevices()
+      if (mountedRef.current) {
+        setStatusMessage('设备名称已更新，请选择后再启动音视频设备。')
+      }
+    } catch (error) {
+      if (mountedRef.current) {
+        setMediaErrorMessage(getLocalMediaErrorMessage(error))
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsIdentifyingDevices(false)
+      }
+    }
+  }, [isIdentifyingDevices, refreshDevices])
 
   const startDevices = useCallback(async () => {
     if (isStartingDevices) {
@@ -547,6 +573,8 @@ export function useMeetingLocalMedia({
     cameraMirrored,
     connectionStatus,
     devices,
+    identifyDevices,
+    isIdentifyingDevices,
     isStartingDevices,
     isStartingScreenShare,
     isRefreshingDevices,

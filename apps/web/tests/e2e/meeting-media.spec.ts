@@ -246,6 +246,10 @@ test.describe('MeetNexus 音视频媒体流程', () => {
 
     await expect(page.getByLabel('摄像头设备')).toBeEnabled()
     await expect(page.getByLabel('麦克风设备')).toBeEnabled()
+    await page.getByRole('button', { name: '识别设备名称' }).click()
+    await expect(page.getByRole('status')).toContainText(
+      '设备名称已更新，请选择后再启动音视频设备。',
+    )
     await page.getByLabel('摄像头设备').selectOption('camera-rear')
     await page.getByLabel('麦克风设备').selectOption('microphone-usb')
 
@@ -268,7 +272,7 @@ test.describe('MeetNexus 音视频媒体流程', () => {
       const testWindow = window as typeof window & {
         __meetNexusMediaConstraints?: MediaStreamConstraints[]
       }
-      return testWindow.__meetNexusMediaConstraints?.[0]
+      return testWindow.__meetNexusMediaConstraints?.[1]
     })
     expect(mediaConstraints).toEqual({
       audio: { deviceId: { exact: 'microphone-usb' } },

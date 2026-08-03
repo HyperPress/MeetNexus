@@ -151,16 +151,37 @@ export function MeetingMediaStage({
                   </p>
                 </div>
 
-                <button
-                  className="btn btn-ghost btn-sm"
-                  disabled={media.isRefreshingDevices}
-                  onClick={() => {
-                    void media.refreshDevices()
-                  }}
-                  type="button"
-                >
-                  {media.isRefreshingDevices ? '正在刷新…' : '刷新设备列表'}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-outline btn-sm"
+                    disabled={
+                      media.isIdentifyingDevices ||
+                      media.isRefreshingDevices
+                    }
+                    onClick={() => {
+                      void media.identifyDevices()
+                    }}
+                    type="button"
+                  >
+                    {media.isIdentifyingDevices
+                      ? '正在识别…'
+                      : '识别设备名称'}
+                  </button>
+
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={
+                      media.isIdentifyingDevices ||
+                      media.isRefreshingDevices
+                    }
+                    onClick={() => {
+                      void media.refreshDevices()
+                    }}
+                    type="button"
+                  >
+                    {media.isRefreshingDevices ? '正在刷新…' : '刷新设备列表'}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -225,7 +246,7 @@ export function MeetingMediaStage({
               </div>
 
               <p className="mt-3 text-xs text-base-content/60">
-                设备启动后如需切换，请先释放音视频设备，再重新选择并启动。
+                首次使用请先点击“识别设备名称”并允许权限，以显示真实设备名称。设备启动后如需切换，请先释放音视频设备，再重新选择并启动。
               </p>
             </section>
           )}

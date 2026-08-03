@@ -67,6 +67,8 @@
 
 ## 最近变更
 
+- 2026-08-03：新增 `scripts/start-api.ps1`，从本机 `.env` 加载允许的 API 配置并将 `RECORDING_STORAGE_ROOT` 转为绝对路径。使用隔离 Chromium 虚拟设备完成真实 WHIP 发布、Live777 录制、停止和受保护 MPD 文件读取验收：回放接口返回 `200`、`application/dash+xml`、`private, no-store`，且清单非空。
+
 - 2026-08-03：录制启动接口新增活动录制重复保护：同一成员已有未停止录制时返回 `409 RECORDING_ALREADY_ACTIVE`，不会再次调用 Live777 启动 recorder。OpenAPI、后端格式检查、18 项单元测试、10 项 HTTP 测试和 Clippy 已同步通过；API `/ready` 返回 200。
 
 - 2026-08-03：会议页新增主持人逐成员开始/停止录制控制和录制状态列表；前端 API 响应经 Zod 校验，新增 Playwright 用例覆盖录制开始、停止和 Bearer 鉴权请求。Oxlint、TypeScript/Vite 生产构建和 17 项 Playwright 测试通过。

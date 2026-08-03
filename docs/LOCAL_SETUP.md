@@ -58,7 +58,7 @@ Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至�
 
 1. 确认 Windows PostgreSQL 服务 `postgresql-x64-15` 正在运行。
 2. 执行 `./scripts/start-local-media-services.ps1` 启动 Memurai 和 Live777。
-3. 启动 API：`cargo run --manifest-path services/api/Cargo.toml`。
+3. 启动 API：`./scripts/start-api.ps1`。该脚本只读取 `.env` 中的允许配置项，并将相对 `RECORDING_STORAGE_ROOT` 解析为绝对路径，避免因 API 工作目录不同而无法读取 Live777 录制文件。
 4. 在另一个终端启动前端：`npm run dev --prefix apps/web`。
 
 当前 API 存活检查地址为 `http://localhost:8080/health`；依赖就绪检查地址为 `http://localhost:8080/ready`，后者会验证 PostgreSQL、Redis 和 Live777，任一不可用时返回 503。前端开发地址由 Vite 输出。

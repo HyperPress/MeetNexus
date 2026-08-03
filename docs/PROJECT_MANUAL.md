@@ -102,7 +102,7 @@ Memurai 与 Live777 的启动命令：
 API 和前端的启动命令：
 
 ```powershell
-cargo run --manifest-path services/api/Cargo.toml
+.\scripts\start-api.ps1
 npm run dev --prefix apps/web
 ```
 

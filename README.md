@@ -66,7 +66,7 @@ MeetNexus 不使用 Docker，PostgreSQL、Memurai 和 Live777 均直接运行在
 .\scripts\setup.ps1
 
 # 启动 API
-cargo run --manifest-path services/api/Cargo.toml
+.\scripts\start-api.ps1
 
 # 在另一个终端启动 Web
 npm run dev --prefix apps/web

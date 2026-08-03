@@ -660,6 +660,8 @@ components:
       oneOf:
         - $ref: "#/components/schemas/RoomMemberJoinedEvent"
         - $ref: "#/components/schemas/RoomMemberLeftEvent"
+        - $ref: "#/components/schemas/RoomScreenShareStartedEvent"
+        - $ref: "#/components/schemas/RoomScreenShareStoppedEvent"
         - $ref: "#/components/schemas/RoomResyncRequiredEvent"
     RoomMemberJoinedEvent:
       type: object
@@ -695,6 +697,28 @@ components:
         event:
           type: string
           enum: [resync_required]
+    RoomScreenShareStartedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [screen_share_started]
+        member_id:
+          type: string
+          format: uuid
+    RoomScreenShareStoppedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [screen_share_stopped]
+        member_id:
+          type: string
+          format: uuid
     HealthResponse:
       type: object
       additionalProperties: false

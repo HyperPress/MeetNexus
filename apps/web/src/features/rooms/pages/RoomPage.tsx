@@ -40,6 +40,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
   const [heartbeatError, setHeartbeatError] = useState<
     string | null
   >(null)
+  const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
 
   const currentSession =
     roomSession?.roomId === roomId ? roomSession : null
@@ -80,7 +81,19 @@ export function RoomPage({ roomId }: RoomPageProps) {
           }
           reconnectTimer = window.setTimeout(connect, 1_000)
         },
-        onEvent: () => {
+        onEvent: (event) => {
+          if (event.event === 'screen_share_started') {
+            setScreenShareMemberIds((memberIds) =>
+              memberIds.includes(event.member_id)
+                ? memberIds
+                : [...memberIds, event.member_id],
+            )
+          }
+          if (event.event === 'screen_share_stopped') {
+            setScreenShareMemberIds((memberIds) =>
+              memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
           void loadRoom()
         },
         roomId: activeSession.roomId,
@@ -296,6 +309,9 @@ export function RoomPage({ roomId }: RoomPageProps) {
                 id: member.id,
                 displayName: member.display_name,
               }))}
+            remoteScreenMemberIds={screenShareMemberIds.filter(
+              (memberId) => memberId !== currentSession?.memberId,
+            )}
             roomId={roomId}
             sessionToken={currentSession?.sessionToken ?? null}
           />

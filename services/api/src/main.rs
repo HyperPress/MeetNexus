@@ -68,6 +68,7 @@ async fn main() {
         live777,
         rooms: state.rooms.clone(),
         session_tokens: state.session_tokens.clone(),
+        event_hub: state.event_hub.clone(),
     };
 
     if let Err(error) =

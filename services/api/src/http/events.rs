@@ -32,6 +32,8 @@ pub struct RoomEventHub {
 pub enum RoomEvent {
     MemberJoined { member: RoomMember },
     MemberLeft { member_id: Uuid },
+    ScreenShareStarted { member_id: Uuid },
+    ScreenShareStopped { member_id: Uuid },
     ResyncRequired,
 }
 

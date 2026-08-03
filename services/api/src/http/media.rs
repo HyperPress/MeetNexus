@@ -27,6 +27,7 @@ pub struct MediaApiState {
     pub live777: Live777Client,
     pub rooms: PgRoomRepository,
     pub session_tokens: SessionTokenService,
+    pub event_hub: super::events::RoomEventHub,
 }
 
 #[derive(Clone, Copy)]
@@ -145,7 +146,7 @@ async fn publish_with_kind(
                 &stream_id,
             )
         })?;
-    media_answer(
+    let answer = media_answer(
         response,
         context.request_id(),
         room_id,
@@ -153,7 +154,14 @@ async fn publish_with_kind(
         current_member_id,
         kind,
         "media_whip_published",
-    )
+    )?;
+    if matches!(kind, StreamKind::Screen) {
+        state.event_hub.publish(
+            room_id,
+            super::events::RoomEvent::ScreenShareStarted { member_id },
+        );
+    }
+    Ok(answer)
 }
 
 async fn subscribe(
@@ -357,6 +365,14 @@ async fn close_session_with_kind(
         event = "media_session_closed",
         error_code = "-",
     );
+    if matches!(kind, StreamKind::Screen) {
+        state.event_hub.publish(
+            room_id,
+            super::events::RoomEvent::ScreenShareStopped {
+                member_id: stream_member_id,
+            },
+        );
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

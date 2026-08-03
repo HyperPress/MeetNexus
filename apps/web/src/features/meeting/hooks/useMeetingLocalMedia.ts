@@ -24,6 +24,7 @@ import {
 interface MeetingMediaOptions {
   memberId: string | null
   remoteMemberIds: string[]
+  remoteScreenMemberIds: string[]
   roomId: string
   sessionToken: string | null
 }
@@ -31,6 +32,7 @@ interface MeetingMediaOptions {
 export function useMeetingLocalMedia({
   memberId,
   remoteMemberIds,
+  remoteScreenMemberIds,
   roomId,
   sessionToken,
 }: MeetingMediaOptions) {
@@ -41,6 +43,7 @@ export function useMeetingLocalMedia({
   const reconnectTimerRef = useRef<number | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
   const subscriptionsRef = useRef(new Map<string, SubscriptionSession>())
+  const screenSubscriptionsRef = useRef(new Map<string, SubscriptionSession>())
 
   const [localStream, setLocalStream] =
     useState<MediaStream | null>(null)
@@ -67,6 +70,9 @@ export function useMeetingLocalMedia({
     useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState('未连接')
   const [remoteStreams, setRemoteStreams] = useState<
+    Record<string, MediaStream>
+  >({})
+  const [remoteScreenStreams, setRemoteScreenStreams] = useState<
     Record<string, MediaStream>
   >({})
 
@@ -191,6 +197,7 @@ export function useMeetingLocalMedia({
   useEffect(() => {
     mountedRef.current = true
     const subscriptions = subscriptionsRef.current
+    const screenSubscriptions = screenSubscriptionsRef.current
 
     return () => {
       mountedRef.current = false
@@ -210,6 +217,10 @@ export function useMeetingLocalMedia({
         void session.close()
       }
       subscriptions.clear()
+      for (const session of screenSubscriptions.values()) {
+        void session.close()
+      }
+      screenSubscriptions.clear()
       stopLocalMedia(currentLocalStream)
       stopLocalMedia(currentScreenStream)
     }
@@ -308,6 +319,54 @@ export function useMeetingLocalMedia({
         })
     }
   }, [memberId, remoteMemberIds, roomId, sessionToken])
+
+  useEffect(() => {
+    if (memberId === null || sessionToken === null) {
+      return
+    }
+
+    const desiredMemberIds = new Set(
+      remoteScreenMemberIds.filter((remoteMemberId) => remoteMemberId !== memberId),
+    )
+    for (const [remoteMemberId, session] of screenSubscriptionsRef.current) {
+      if (!desiredMemberIds.has(remoteMemberId)) {
+        screenSubscriptionsRef.current.delete(remoteMemberId)
+        void session.close()
+        setRemoteScreenStreams((streams) => {
+          const { [remoteMemberId]: _, ...remainingStreams } = streams
+          return remainingStreams
+        })
+      }
+    }
+    for (const remoteMemberId of desiredMemberIds) {
+      if (screenSubscriptionsRef.current.has(remoteMemberId)) {
+        continue
+      }
+      void subscribeWhep({
+        roomId,
+        memberId,
+        sessionToken,
+        streamKind: 'screen',
+        streamMemberId: remoteMemberId,
+      })
+        .then((session) => {
+          if (!mountedRef.current || !desiredMemberIds.has(remoteMemberId)) {
+            void session.close()
+            return
+          }
+          screenSubscriptionsRef.current.set(remoteMemberId, session)
+          setRemoteScreenStreams((streams) => ({
+            ...streams,
+            [remoteMemberId]: session.stream,
+          }))
+        })
+        .catch((error: unknown) => {
+          if (mountedRef.current) {
+            setScreenErrorMessage(getMeetingMediaErrorMessage(error))
+          }
+        })
+    }
+  }, [memberId, remoteScreenMemberIds, roomId, sessionToken])
 
   const toggleCamera = useCallback(() => {
     const currentStream = localStreamRef.current
@@ -453,6 +512,7 @@ export function useMeetingLocalMedia({
     screenInfo,
     screenStream,
     remoteStreams,
+    remoteScreenStreams,
     statusMessage,
     startDevices,
     startScreenSharing,

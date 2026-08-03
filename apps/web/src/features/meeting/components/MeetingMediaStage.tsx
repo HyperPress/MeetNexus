@@ -11,6 +11,7 @@ interface MeetingMediaStageProps {
     displayName: string
     id: string
   }>
+  remoteScreenMemberIds: string[]
   roomId: string
   sessionToken: string | null
 }
@@ -20,12 +21,14 @@ export function MeetingMediaStage({
   displayName,
   memberId,
   remoteMembers,
+  remoteScreenMemberIds,
   roomId,
   sessionToken,
 }: MeetingMediaStageProps) {
   const media = useMeetingLocalMedia({
     memberId,
     remoteMemberIds: remoteMembers.map((member) => member.id),
+    remoteScreenMemberIds,
     roomId,
     sessionToken,
   })
@@ -71,6 +74,24 @@ export function MeetingMediaStage({
                 )
               })}
             </div>
+          )}
+
+          {Object.entries(media.remoteScreenStreams).length > 0 && (
+            <section className="mt-4">
+              <h3 className="text-sm font-semibold">远端屏幕共享</h3>
+              <div className="mt-2 grid gap-4 md:grid-cols-2">
+                {remoteMembers.map((member) => {
+                  const stream = media.remoteScreenStreams[member.id]
+                  return stream === undefined ? null : (
+                    <RemoteVideoPreview
+                      displayName={`${member.displayName}的屏幕共享`}
+                      key={member.id}
+                      stream={stream}
+                    />
+                  )
+                })}
+              </div>
+            </section>
           )}
 
           <div className="mt-3 flex items-center justify-between gap-3 rounded-box bg-black/30 px-4 py-3">

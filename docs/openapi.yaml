@@ -238,6 +238,8 @@ paths:
           $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
+        "409":
+          $ref: "#/components/responses/RecordingAlreadyActive"
         "502":
           $ref: "#/components/responses/MediaServiceUnavailable"
   /rooms/{room_id}/recordings/{recording_id}/stop:
@@ -674,6 +676,15 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     RecordingNotReady:
       description: 录制仍在进行或尚未生成回放文件
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingAlreadyActive:
+      description: 目标成员已有未停止的录制任务
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"

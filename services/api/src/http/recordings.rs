@@ -97,6 +97,20 @@ async fn start_recording(
             request_id: context.request_id(),
         });
     }
+    let recordings = state
+        .recordings
+        .list_recordings(room_id)
+        .await
+        .map_err(|_| ApiError::Internal {
+            request_id: context.request_id(),
+        })?;
+    if recordings.iter().any(|recording| {
+        recording.member_id == member_id && recording.state == RecordingState::Recording
+    }) {
+        return Err(ApiError::RecordingAlreadyActive {
+            request_id: context.request_id(),
+        });
+    }
     let stream_id = stream_id(room_id, member_id);
     let upstream = state
         .live777

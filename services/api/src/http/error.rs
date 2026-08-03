@@ -28,6 +28,9 @@ pub enum ApiError {
     RecordingNotReady {
         request_id: Uuid,
     },
+    RecordingAlreadyActive {
+        request_id: Uuid,
+    },
     RecordingFileUnavailable {
         request_id: Uuid,
     },
@@ -91,6 +94,12 @@ impl ApiError {
                 StatusCode::CONFLICT,
                 "RECORDING_NOT_READY",
                 "录制尚未停止或回放文件尚未就绪",
+                *request_id,
+            ),
+            Self::RecordingAlreadyActive { request_id } => (
+                StatusCode::CONFLICT,
+                "RECORDING_ALREADY_ACTIVE",
+                "该成员已有正在进行的录制",
                 *request_id,
             ),
             Self::RecordingFileUnavailable { request_id } => (

@@ -5,6 +5,7 @@ import {
 } from 'react'
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
 import type { RoomDetails } from '../../../schemas/room'
+import { MeetingMediaStage } from '../../meeting/components/MeetingMediaStage'
 import {
   getRoom,
   leaveRoom,
@@ -243,22 +244,12 @@ export function RoomPage({ roomId }: RoomPageProps) {
         )}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="card min-h-96 bg-neutral text-neutral-content shadow-xl">
-            <div className="card-body items-center justify-center text-center">
-              <h2 className="text-2xl font-semibold">
-                会议媒体区域
-              </h2>
-
-              <p className="max-w-lg text-neutral-content/70">
-                当前阶段只接入真实房间和成员数据。正式音视频发布与订阅将在媒体授权和
-                WHIP/WHEP 接口完成后接入。
-              </p>
-
-              <a className="btn btn-primary mt-4" href="#/preview">
-                打开设备检测
-              </a>
-            </div>
-          </section>
+          <MeetingMediaStage
+            canControlMedia={currentSession !== null}
+            displayName={
+              currentSession?.displayName ?? '未加入会议的访客'
+            }
+          />
 
           <aside className="card bg-base-100 shadow-xl">
             <div className="card-body">

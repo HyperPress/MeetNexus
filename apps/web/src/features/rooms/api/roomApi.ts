@@ -6,11 +6,15 @@ import {
   RoomDetailsResponseSchema,
   CreateRoomResponseSchema,
   JoinRoomResponseSchema,
+  RecordingListResponseSchema,
+  RecordingResponseSchema,
   type CreateRoomRequest,
   type JoinRoomRequest,
   type CreateRoomResponse,
   type JoinRoomResponse,
   type RoomDetailsResponse,
+  type RecordingListResponse,
+  type RecordingResponse,
 } from '../../../schemas/room'
 
 function roomPath(roomId: string): string {
@@ -68,6 +72,53 @@ export function refreshRoomMemberPresence(
 ): Promise<void> {
   return requestNoContent(
     `${memberPath(roomId, memberId)}/heartbeat`,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      method: 'POST',
+    },
+  )
+}
+
+function recordingPath(roomId: string): string {
+  return `${roomPath(roomId)}/recordings`
+}
+
+export function listRoomRecordings(
+  roomId: string,
+  sessionToken: string,
+): Promise<RecordingListResponse> {
+  return requestJson(
+    recordingPath(roomId),
+    RecordingListResponseSchema,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    },
+  )
+}
+
+export function startRoomMemberRecording(
+  roomId: string,
+  memberId: string,
+  sessionToken: string,
+): Promise<RecordingResponse> {
+  return requestJson(
+    `${recordingPath(roomId)}/${encodeURIComponent(memberId)}`,
+    RecordingResponseSchema,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      method: 'POST',
+    },
+  )
+}
+
+export function stopRoomRecording(
+  roomId: string,
+  recordingId: string,
+  sessionToken: string,
+): Promise<RecordingResponse> {
+  return requestJson(
+    `${recordingPath(roomId)}/${encodeURIComponent(recordingId)}/stop`,
+    RecordingResponseSchema,
     {
       headers: { Authorization: `Bearer ${sessionToken}` },
       method: 'POST',

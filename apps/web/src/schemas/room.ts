@@ -96,6 +96,30 @@ export const RoomEventSchema = z.discriminatedUnion('event', [
   }),
 ])
 
+export const RecordingStateSchema = z.enum(['recording', 'stopped'])
+
+export const RecordingSchema = z.strictObject({
+  id: UuidSchema,
+  room_id: UuidSchema,
+  member_id: UuidSchema,
+  started_by: UuidSchema,
+  live777_record_id: z.string().nullable(),
+  mpd_path: z.string().nullable(),
+  state: RecordingStateSchema,
+  started_at: DateTimeSchema,
+  stopped_at: DateTimeSchema.nullable(),
+})
+
+export const RecordingResponseSchema = z.strictObject({
+  data: RecordingSchema,
+  request_id: UuidSchema,
+})
+
+export const RecordingListResponseSchema = z.strictObject({
+  data: z.array(RecordingSchema),
+  request_id: UuidSchema,
+})
+
 export const ErrorDetailSchema = z.strictObject({
   code: z.string(),
   message: z.string(),
@@ -126,3 +150,9 @@ export type JoinRoomResponse = z.infer<
   typeof JoinRoomResponseSchema
 >
 export type RoomEvent = z.infer<typeof RoomEventSchema>
+export type RecordingState = z.infer<typeof RecordingStateSchema>
+export type Recording = z.infer<typeof RecordingSchema>
+export type RecordingResponse = z.infer<typeof RecordingResponseSchema>
+export type RecordingListResponse = z.infer<
+  typeof RecordingListResponseSchema
+>

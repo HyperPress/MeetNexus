@@ -134,6 +134,19 @@ async function fulfillApi(route: Route) {
     return
   }
 
+  if (
+    url.pathname === `/rooms/${roomId}/recordings` &&
+    request.method() === 'GET'
+  ) {
+    expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: { data: [], request_id: requestId },
+    })
+    return
+  }
+
   if (request.method() === 'DELETE' && url.pathname.startsWith('/media/')) {
     expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
     await route.fulfill({ status: 204 })

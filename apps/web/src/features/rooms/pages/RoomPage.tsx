@@ -6,6 +6,7 @@ import {
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
 import type { RoomDetails } from '../../../schemas/room'
 import { MeetingMediaStage } from '../../meeting/components/MeetingMediaStage'
+import { RecordingPanel } from '../components/RecordingPanel'
 import {
   getRoom,
   leaveRoom,
@@ -348,7 +349,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
                   暂无成员
                 </p>
               ) : (
-                <ul className="mt-2 space-y-3">
+                <ul aria-label="参会成员" className="mt-2 space-y-3">
                   {roomDetails.members.map((member) => {
                     const isCurrentMember =
                       currentSession?.memberId === member.id
@@ -387,6 +388,13 @@ export function RoomPage({ roomId }: RoomPageProps) {
                   })}
                 </ul>
               )}
+
+              <RecordingPanel
+                canManage={currentSession?.role === 'host'}
+                members={roomDetails.members}
+                roomId={roomId}
+                sessionToken={currentSession?.sessionToken ?? null}
+              />
             </div>
           </aside>
         </div>

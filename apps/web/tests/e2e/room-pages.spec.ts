@@ -83,6 +83,21 @@ async function fulfillRoomApi(route: Route) {
   }
 
   if (
+    url.pathname === `/rooms/${roomId}/recordings` &&
+    method === 'GET'
+  ) {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: { data: [], request_id: requestId },
+    })
+    return
+  }
+
+  if (
     url.pathname.endsWith('/heartbeat') &&
     method === 'POST'
   ) {
@@ -520,13 +535,26 @@ test.describe('MeetNexus 房间入口页面', () => {
           await route.fulfill({ status: 204 })
           return
         }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings` &&
+          request.method() === 'GET'
+        ) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: [], request_id: requestId },
+          })
+          return
+        }
         await route.fulfill({ status: 404 })
       },
     )
 
     await page.goto(`/#/rooms/${roomId}`)
+    const memberList = page.locator('aside > .card-body > ul')
+    await expect(memberList).toHaveCount(1)
     await expect(
-      page.getByText('测试主持人', { exact: true }),
+      memberList.getByText('测试主持人', { exact: false }),
     ).toBeVisible()
 
     const socket = await page.evaluate(() => {
@@ -565,7 +593,129 @@ test.describe('MeetNexus 房间入口页面', () => {
         ?.dispatchEvent(event)
     })
 
-    await expect(page.getByText('实时参会者')).toBeVisible()
+    await expect(
+      memberList.getByText('实时参会者', { exact: false }),
+    ).toBeVisible()
+  })
+
+  test('主持人可以管理成员录制任务', async ({ page }) => {
+    await page.addInitScript(
+      ({ storedRoomId, storedMemberId, token }) => {
+        class IsolatedWebSocket extends EventTarget {
+          close() {
+            this.dispatchEvent(new Event('close'))
+          }
+        }
+
+        Object.defineProperty(window, 'WebSocket', {
+          configurable: true,
+          value: IsolatedWebSocket,
+        })
+        sessionStorage.setItem(
+          'meetnexus.room-session',
+          JSON.stringify({
+            roomId: storedRoomId,
+            memberId: storedMemberId,
+            displayName: '测试主持人',
+            role: 'host',
+            sessionToken: token,
+          }),
+        )
+      },
+      {
+        storedRoomId: roomId,
+        storedMemberId: hostId,
+        token: sessionToken,
+      },
+    )
+
+    const recordingId = '55555555-5555-4555-8555-555555555555'
+    let recordings: Array<Record<string, unknown>> = []
+    await page.route(
+      /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
+      async (route) => {
+        const request = route.request()
+        const url = new URL(request.url())
+        if (url.pathname === `/rooms/${roomId}` && request.method() === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: roomDetailsResponse,
+          })
+          return
+        }
+        if (url.pathname.endsWith('/heartbeat')) {
+          await route.fulfill({ status: 204 })
+          return
+        }
+        if (url.pathname === `/rooms/${roomId}/recordings` && request.method() === 'GET') {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: recordings, request_id: requestId },
+          })
+          return
+        }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings/${hostId}` &&
+          request.method() === 'POST'
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          recordings = [
+            {
+              id: recordingId,
+              room_id: roomId,
+              member_id: hostId,
+              started_by: hostId,
+              live777_record_id: null,
+              mpd_path: '/room-test/1/manifest.mpd',
+              state: 'recording',
+              started_at: '2026-08-03T00:00:00Z',
+              stopped_at: null,
+            },
+          ]
+          await route.fulfill({
+            status: 201,
+            contentType: 'application/json',
+            json: { data: recordings[0], request_id: requestId },
+          })
+          return
+        }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings/${recordingId}/stop` &&
+          request.method() === 'POST'
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          recordings = recordings.map((recording) => ({
+            ...recording,
+            state: 'stopped',
+            stopped_at: '2026-08-03T00:01:00Z',
+          }))
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: recordings[0], request_id: requestId },
+          })
+          return
+        }
+        await route.fulfill({ status: 404 })
+      },
+    )
+
+    await page.goto(`/#/rooms/${roomId}`)
+    const startButton = page.getByRole('button', {
+      name: '开始录制',
+    })
+    await expect(startButton).toBeVisible()
+    await startButton.click()
+
+    const stopButton = page.getByRole('button', {
+      name: '停止录制',
+    })
+    await expect(stopButton).toBeVisible()
+    await stopButton.click()
+    await expect(page.getByText('已停止：', { exact: false })).toBeVisible()
   })
 
   test('没有房间成员身份时禁用媒体控制', async ({

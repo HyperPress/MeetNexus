@@ -11,6 +11,7 @@ import {
   leaveRoom,
   refreshRoomMemberPresence,
 } from '../api/roomApi'
+import { connectRoomEvents } from '../api/roomEvents'
 import {
   clearRoomSession,
   readRoomSession,
@@ -62,25 +63,41 @@ export function RoomPage({ roomId }: RoomPageProps) {
   }, [loadRoom])
 
   useEffect(() => {
-    let active = true
+    if (currentSession === null) {
+      return
+    }
 
-    const intervalId = window.setInterval(() => {
-      void getRoom(roomId)
-        .then((response) => {
-          if (active) {
-            setRoomDetails(response.data)
+    const activeSession = currentSession
+    let active = true
+    let reconnectTimer: number | null = null
+    let disconnect = () => {}
+
+    function connect() {
+      disconnect = connectRoomEvents({
+        onClose: () => {
+          if (!active) {
+            return
           }
-        })
-        .catch(() => {
-          // 后台刷新失败不影响当前会议页面，用户仍可手动刷新。
-        })
-    }, 5_000)
+          reconnectTimer = window.setTimeout(connect, 1_000)
+        },
+        onEvent: () => {
+          void loadRoom()
+        },
+        roomId: activeSession.roomId,
+        sessionToken: activeSession.sessionToken,
+      })
+    }
+
+    connect()
 
     return () => {
       active = false
-      window.clearInterval(intervalId)
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+      }
+      disconnect()
     }
-  }, [roomId])
+  }, [currentSession, loadRoom])
 
   useEffect(() => {
     if (currentSession === null) {

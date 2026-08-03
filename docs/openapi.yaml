@@ -142,6 +142,26 @@ paths:
           $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
+  /rooms/{room_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: subscribeRoomEvents
+      summary: 订阅会议实时事件
+      description: 通过 WebSocket 接收成员加入和离开事件。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
+      tags:
+        - 房间
+      security:
+        - WebSocketSession: []
+      responses:
+        "101":
+          description: WebSocket 升级成功
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
   /media/whip/{room_id}/{member_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -258,6 +278,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    WebSocketSession:
+      type: apiKey
+      in: header
+      name: Sec-WebSocket-Protocol
+      description: 以 `meetnexus.<JWT>` 子协议值传递的房间成员短期令牌。
   parameters:
     RoomId:
       name: room_id
@@ -525,6 +550,45 @@ components:
       type: string
       minLength: 1
       description: 当前房间成员的短期访问令牌；成员接口通过 Authorization Bearer 头传递，禁止写入 URL、日志或持久化存储。
+    RoomEvent:
+      oneOf:
+        - $ref: "#/components/schemas/RoomMemberJoinedEvent"
+        - $ref: "#/components/schemas/RoomMemberLeftEvent"
+        - $ref: "#/components/schemas/RoomResyncRequiredEvent"
+    RoomMemberJoinedEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+        - member
+      properties:
+        event:
+          type: string
+          enum: [member_joined]
+        member:
+          $ref: "#/components/schemas/RoomMember"
+    RoomMemberLeftEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+        - member_id
+      properties:
+        event:
+          type: string
+          enum: [member_left]
+        member_id:
+          type: string
+          format: uuid
+    RoomResyncRequiredEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+      properties:
+        event:
+          type: string
+          enum: [resync_required]
     HealthResponse:
       type: object
       additionalProperties: false

@@ -1,5 +1,6 @@
 pub mod auth;
 mod error;
+pub mod events;
 mod health;
 pub mod media;
 mod request_context;

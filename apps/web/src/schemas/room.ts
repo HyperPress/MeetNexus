@@ -66,6 +66,20 @@ export const JoinRoomResponseSchema = z.strictObject({
   session_token: SessionTokenSchema,
 })
 
+export const RoomEventSchema = z.discriminatedUnion('event', [
+  z.strictObject({
+    event: z.literal('member_joined'),
+    member: RoomMemberSchema,
+  }),
+  z.strictObject({
+    event: z.literal('member_left'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('resync_required'),
+  }),
+])
+
 export const ErrorDetailSchema = z.strictObject({
   code: z.string(),
   message: z.string(),
@@ -95,3 +109,4 @@ export type CreateRoomResponse = z.infer<
 export type JoinRoomResponse = z.infer<
   typeof JoinRoomResponseSchema
 >
+export type RoomEvent = z.infer<typeof RoomEventSchema>

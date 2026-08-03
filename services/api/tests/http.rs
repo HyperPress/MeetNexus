@@ -2,7 +2,7 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use api::{
     domain::MemberRole,
-    http::{auth::SessionTokenService, rooms::RoomApiState},
+    http::{auth::SessionTokenService, events::RoomEventHub, rooms::RoomApiState},
     infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
 };
 use tokio::{
@@ -33,6 +33,7 @@ impl TestServer {
             session_tokens: SessionTokenService::new(
                 "test-secret-that-is-long-enough-for-jwt-signing",
             ),
+            event_hub: RoomEventHub::default(),
         };
 
         Self::start_with_app(api::app_with_rooms(state)).await

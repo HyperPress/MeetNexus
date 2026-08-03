@@ -119,6 +119,18 @@ async function fulfillRoomApi(route: Route) {
 }
 
 async function mockRoomApi(page: Page) {
+  await page.addInitScript(() => {
+    class IsolatedWebSocket extends EventTarget {
+      close() {
+        this.dispatchEvent(new Event('close'))
+      }
+    }
+
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: IsolatedWebSocket,
+    })
+  })
   await page.route(
     /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
     fulfillRoomApi,
@@ -419,6 +431,141 @@ test.describe('MeetNexus 房间入口页面', () => {
     await expect(page.getByRole('status')).toContainText(
       '摄像头和麦克风已释放',
     )
+  })
+
+  test('成员事件通过受保护的 WebSocket 实时刷新房间列表', async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ storedRoomId, storedMemberId, token }) => {
+        class IsolatedWebSocket extends EventTarget {
+          static instances: IsolatedWebSocket[] = []
+          protocol: string
+          readyState = 1
+          url: string
+
+          constructor(url: string, protocol: string) {
+            super()
+            this.url = url
+            this.protocol = protocol
+            IsolatedWebSocket.instances.push(this)
+          }
+
+          close() {
+            this.readyState = 3
+            this.dispatchEvent(new Event('close'))
+          }
+        }
+
+        const testWindow = window as typeof window & {
+          __meetNexusWebSockets?: IsolatedWebSocket[]
+        }
+        Object.defineProperty(window, 'WebSocket', {
+          configurable: true,
+          value: IsolatedWebSocket,
+        })
+        testWindow.__meetNexusWebSockets = IsolatedWebSocket.instances
+        sessionStorage.setItem(
+          'meetnexus.room-session',
+          JSON.stringify({
+            roomId: storedRoomId,
+            memberId: storedMemberId,
+            displayName: '测试主持人',
+            role: 'host',
+            sessionToken: token,
+          }),
+        )
+      },
+      {
+        storedRoomId: roomId,
+        storedMemberId: hostId,
+        token: sessionToken,
+      },
+    )
+
+    let roomReadCount = 0
+    await page.route(
+      /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
+      async (route) => {
+        const request = route.request()
+        const url = new URL(request.url())
+        if (url.pathname === `/rooms/${roomId}` && request.method() === 'GET') {
+          roomReadCount += 1
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: {
+              ...roomDetailsResponse,
+              data: {
+                ...roomDetailsResponse.data,
+                members:
+                  roomReadCount === 1
+                    ? roomDetailsResponse.data.members
+                    : [
+                        ...roomDetailsResponse.data.members,
+                        {
+                          id: participantId,
+                          display_name: '实时参会者',
+                          role: 'participant',
+                          joined_at: '2026-07-30T00:05:00Z',
+                          online: true,
+                        },
+                      ],
+              },
+            },
+          })
+          return
+        }
+        if (url.pathname.endsWith('/heartbeat')) {
+          await route.fulfill({ status: 204 })
+          return
+        }
+        await route.fulfill({ status: 404 })
+      },
+    )
+
+    await page.goto(`/#/rooms/${roomId}`)
+    await expect(
+      page.getByText('测试主持人', { exact: true }),
+    ).toBeVisible()
+
+    const socket = await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<{
+          protocol: string
+          url: string
+        }>
+      }
+      return testWindow.__meetNexusWebSockets?.find((socket) =>
+        socket.protocol.startsWith('meetnexus.'),
+      )
+    })
+    expect(socket?.protocol).toBe(`meetnexus.${sessionToken}`)
+    expect(socket?.url).not.toContain(sessionToken)
+
+    await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<EventTarget & { protocol: string }>
+      }
+      const event = new Event('message')
+      Object.defineProperty(event, 'data', {
+        value: JSON.stringify({
+          event: 'member_joined',
+          member: {
+            id: '33333333-3333-4333-8333-333333333333',
+            display_name: '实时参会者',
+            role: 'participant',
+            joined_at: '2026-07-30T00:05:00Z',
+            online: true,
+          },
+        }),
+      })
+      testWindow.__meetNexusWebSockets
+        ?.find((socket) => socket.protocol.startsWith('meetnexus.'))
+        ?.dispatchEvent(event)
+    })
+
+    await expect(page.getByText('实时参会者')).toBeVisible()
   })
 
   test('没有房间成员身份时禁用媒体控制', async ({

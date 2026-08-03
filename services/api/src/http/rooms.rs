@@ -14,7 +14,11 @@ use crate::{
 };
 
 use super::{
-    ApiError, auth::SessionTokenService, request_context::RequestContext, response::SuccessResponse,
+    ApiError,
+    auth::SessionTokenService,
+    events::{RoomEvent, RoomEventHub},
+    request_context::RequestContext,
+    response::SuccessResponse,
 };
 
 #[derive(Clone)]
@@ -22,6 +26,7 @@ pub struct RoomApiState {
     pub rooms: PgRoomRepository,
     pub presence: RedisPresenceRepository,
     pub session_tokens: SessionTokenService,
+    pub event_hub: RoomEventHub,
 }
 
 #[derive(Serialize)]
@@ -64,6 +69,7 @@ pub fn router(state: RoomApiState) -> Router {
             "/rooms/{room_id}/members/{member_id}/heartbeat",
             post(refresh_presence),
         )
+        .route("/rooms/{room_id}/events", get(super::events::subscribe))
         .with_state(state)
 }
 
@@ -84,6 +90,12 @@ async fn create_room(
         state
             .session_tokens
             .issue(details.room.id, host.id, host.role, context.request_id())?;
+    state.event_hub.publish(
+        details.room.id,
+        RoomEvent::MemberJoined {
+            member: host.clone(),
+        },
+    );
     log_room_event(
         context.request_id(),
         details.room.id,
@@ -133,6 +145,12 @@ async fn join_room(
         state
             .session_tokens
             .issue(room_id, member.id, member.role, context.request_id())?;
+    state.event_hub.publish(
+        room_id,
+        RoomEvent::MemberJoined {
+            member: member.clone(),
+        },
+    );
     log_room_event(
         context.request_id(),
         room_id,
@@ -162,6 +180,9 @@ async fn leave_room(
         .leave_room(room_id, member_id)
         .await
         .map_err(|error| map_error(error, context.request_id(), Some(room_id), Some(member_id)))?;
+    state
+        .event_hub
+        .publish(room_id, RoomEvent::MemberLeft { member_id });
     log_room_event(
         context.request_id(),
         room_id,

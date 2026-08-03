@@ -72,6 +72,37 @@ impl SessionTokenService {
             .and_then(|value| value.strip_prefix("Bearer "))
             .filter(|value| !value.is_empty())
             .ok_or(ApiError::SessionAuthenticationRequired { request_id })?;
+        self.authenticate_token(token, request_id)
+    }
+
+    pub fn authenticate_websocket_protocol(
+        &self,
+        headers: &HeaderMap,
+        request_id: Uuid,
+    ) -> Result<(AuthenticatedMember, String), ApiError> {
+        let protocol = headers
+            .get("sec-websocket-protocol")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .find(|value| value.starts_with("meetnexus."))
+            })
+            .ok_or(ApiError::SessionAuthenticationRequired { request_id })?;
+        let token = protocol
+            .strip_prefix("meetnexus.")
+            .filter(|value| !value.is_empty())
+            .ok_or(ApiError::SessionAuthenticationRequired { request_id })?;
+        let member = self.authenticate_token(token, request_id)?;
+        Ok((member, protocol.to_owned()))
+    }
+
+    fn authenticate_token(
+        &self,
+        token: &str,
+        request_id: Uuid,
+    ) -> Result<AuthenticatedMember, ApiError> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&[TOKEN_ISSUER]);
         let claims = decode::<SessionClaims>(token, &self.decoding_key, &validation)

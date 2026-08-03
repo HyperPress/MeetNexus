@@ -65,6 +65,15 @@ async function installIsolatedPeerConnection(page: Page) {
       configurable: true,
       value: IsolatedPeerConnection,
     })
+    class IsolatedWebSocket extends EventTarget {
+      close() {
+        this.dispatchEvent(new Event('close'))
+      }
+    }
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: IsolatedWebSocket,
+    })
   })
 }
 

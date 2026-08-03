@@ -2,7 +2,7 @@ use std::process;
 
 use api::{
     config::AppConfig,
-    http::{auth::SessionTokenService, rooms::RoomApiState},
+    http::{auth::SessionTokenService, events::RoomEventHub, rooms::RoomApiState},
     infrastructure::{
         live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
     },
@@ -57,6 +57,7 @@ async fn main() {
         rooms: PgRoomRepository::new(database),
         presence: RedisPresenceRepository::new(redis),
         session_tokens: SessionTokenService::new(&config.auth_jwt_secret),
+        event_hub: RoomEventHub::default(),
     };
     let live777 = Live777Client::new(&config.live777_url, config.live777_token.clone())
         .unwrap_or_else(|error| {

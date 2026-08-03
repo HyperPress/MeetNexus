@@ -70,3 +70,7 @@
 - 2026-07-31：会议房间页面接入浏览器本地摄像头、麦克风和屏幕分享控制，复用现有本地媒体适配层与预览组件；新增房间成员媒体操作权限限制和页面卸载资源清理。
 - 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。
 - 2026-07-28：新增非敏感本机配置模板并补充使用说明；修改 `.env.example`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。
+- 2026-08-03：完善会议室前端体验：新增响应式会议画面组件、音视频状态图标、摄像头关闭占位、宫格与主画面布局、屏幕共享自动主画面、全屏显示和紧凑画面信息标签；当前分支继续保持仅本地预览边界，未伪造或接入尚未合并的远端媒体数据。
+- 修改文件：`apps/web/src/app/AppRouter.tsx`、`apps/web/src/features/meeting/pages/MeetingRoomDemoPage.tsx`、`apps/web/src/features/meeting/components/MeetingMediaGrid.tsx`、`apps/web/src/features/meeting/components/MeetingMediaStage.tsx` 与 `docs/STATUS.md`。
+- 验证结果：`npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 和 `npm run test:e2e --prefix apps/web` 全部通过，共 14 项 Playwright 测试通过。
+- 遗留问题与下一步：远端成员音视频和屏幕共享需要等待媒体链路合并后，将真实 `remoteStreams`、`remoteScreenStreams` 与成员列表传入 `MeetingMediaGrid`；远端麦克风和摄像头的精确开关状态仍应由成员媒体状态事件提供。

@@ -9,6 +9,7 @@ const roomId = '11111111-1111-4111-8111-111111111111'
 const hostId = '22222222-2222-4222-8222-222222222222'
 const participantId = '33333333-3333-4333-8333-333333333333'
 const requestId = '44444444-4444-4444-8444-444444444444'
+const sessionToken = 'test-room-session-token'
 
 const roomDetailsResponse = {
   data: {
@@ -39,7 +40,10 @@ async function fulfillRoomApi(route: Route) {
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      json: roomDetailsResponse,
+      json: {
+        ...roomDetailsResponse,
+        session_token: sessionToken,
+      },
     })
     return
   }
@@ -72,7 +76,23 @@ async function fulfillRoomApi(route: Route) {
           online: true,
         },
         request_id: requestId,
+        session_token: sessionToken,
       },
+    })
+    return
+  }
+
+  if (
+    url.pathname === `/rooms/${roomId}/recordings` &&
+    method === 'GET'
+  ) {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: { data: [], request_id: requestId },
     })
     return
   }
@@ -81,6 +101,9 @@ async function fulfillRoomApi(route: Route) {
     url.pathname.endsWith('/heartbeat') &&
     method === 'POST'
   ) {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
     await route.fulfill({
       status: 204,
     })
@@ -88,6 +111,9 @@ async function fulfillRoomApi(route: Route) {
   }
 
   if (method === 'DELETE') {
+    expect(request.headers().authorization).toBe(
+      `Bearer ${sessionToken}`,
+    )
     await route.fulfill({
       status: 204,
     })
@@ -108,6 +134,18 @@ async function fulfillRoomApi(route: Route) {
 }
 
 async function mockRoomApi(page: Page) {
+  await page.addInitScript(() => {
+    class IsolatedWebSocket extends EventTarget {
+      close() {
+        this.dispatchEvent(new Event('close'))
+      }
+    }
+
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: IsolatedWebSocket,
+    })
+  })
   await page.route(
     /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
     fulfillRoomApi,
@@ -408,6 +446,347 @@ test.describe('MeetNexus 房间入口页面', () => {
     await expect(page.getByRole('status')).toContainText(
       '摄像头和麦克风已释放',
     )
+  })
+
+  test('成员事件通过受保护的 WebSocket 实时刷新房间列表', async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ storedRoomId, storedMemberId, token }) => {
+        class IsolatedWebSocket extends EventTarget {
+          static instances: IsolatedWebSocket[] = []
+          protocol: string
+          readyState = 1
+          url: string
+
+          constructor(url: string, protocol: string) {
+            super()
+            this.url = url
+            this.protocol = protocol
+            IsolatedWebSocket.instances.push(this)
+          }
+
+          close() {
+            this.readyState = 3
+            this.dispatchEvent(new Event('close'))
+          }
+        }
+
+        const testWindow = window as typeof window & {
+          __meetNexusWebSockets?: IsolatedWebSocket[]
+        }
+        Object.defineProperty(window, 'WebSocket', {
+          configurable: true,
+          value: IsolatedWebSocket,
+        })
+        class TestSourceBuffer extends EventTarget {
+          appendBuffer() {
+            queueMicrotask(() => {
+              this.dispatchEvent(new Event('updateend'))
+            })
+          }
+        }
+        class TestMediaSource extends EventTarget {
+          static isTypeSupported() {
+            return true
+          }
+
+          readyState = 'closed'
+
+          constructor() {
+            super()
+            queueMicrotask(() => {
+              this.readyState = 'open'
+              this.dispatchEvent(new Event('sourceopen'))
+            })
+          }
+
+          addSourceBuffer() {
+            return new TestSourceBuffer()
+          }
+
+          endOfStream() {
+            this.readyState = 'ended'
+          }
+        }
+        Object.defineProperty(window, 'MediaSource', {
+          configurable: true,
+          value: TestMediaSource,
+        })
+        Object.defineProperty(URL, 'createObjectURL', {
+          configurable: true,
+          value: () => 'blob:meetnexus-recording',
+        })
+        Object.defineProperty(URL, 'revokeObjectURL', {
+          configurable: true,
+          value: () => {},
+        })
+        testWindow.__meetNexusWebSockets = IsolatedWebSocket.instances
+        sessionStorage.setItem(
+          'meetnexus.room-session',
+          JSON.stringify({
+            roomId: storedRoomId,
+            memberId: storedMemberId,
+            displayName: '测试主持人',
+            role: 'host',
+            sessionToken: token,
+          }),
+        )
+      },
+      {
+        storedRoomId: roomId,
+        storedMemberId: hostId,
+        token: sessionToken,
+      },
+    )
+
+    let roomReadCount = 0
+    await page.route(
+      /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
+      async (route) => {
+        const request = route.request()
+        const url = new URL(request.url())
+        if (url.pathname === `/rooms/${roomId}` && request.method() === 'GET') {
+          roomReadCount += 1
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: {
+              ...roomDetailsResponse,
+              data: {
+                ...roomDetailsResponse.data,
+                members:
+                  roomReadCount === 1
+                    ? roomDetailsResponse.data.members
+                    : [
+                        ...roomDetailsResponse.data.members,
+                        {
+                          id: participantId,
+                          display_name: '实时参会者',
+                          role: 'participant',
+                          joined_at: '2026-07-30T00:05:00Z',
+                          online: true,
+                        },
+                      ],
+              },
+            },
+          })
+          return
+        }
+        if (url.pathname.endsWith('/heartbeat')) {
+          await route.fulfill({ status: 204 })
+          return
+        }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings` &&
+          request.method() === 'GET'
+        ) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: [], request_id: requestId },
+          })
+          return
+        }
+        await route.fulfill({ status: 404 })
+      },
+    )
+
+    await page.goto(`/#/rooms/${roomId}`)
+    const memberList = page.locator('aside > .card-body > ul')
+    await expect(memberList).toHaveCount(1)
+    await expect(
+      memberList.getByText('测试主持人', { exact: false }),
+    ).toBeVisible()
+
+    const socket = await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<{
+          protocol: string
+          url: string
+        }>
+      }
+      return testWindow.__meetNexusWebSockets?.find((socket) =>
+        socket.protocol.startsWith('meetnexus.'),
+      )
+    })
+    expect(socket?.protocol).toBe(`meetnexus.${sessionToken}`)
+    expect(socket?.url).not.toContain(sessionToken)
+
+    await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<EventTarget & { protocol: string }>
+      }
+      const event = new Event('message')
+      Object.defineProperty(event, 'data', {
+        value: JSON.stringify({
+          event: 'member_joined',
+          member: {
+            id: '33333333-3333-4333-8333-333333333333',
+            display_name: '实时参会者',
+            role: 'participant',
+            joined_at: '2026-07-30T00:05:00Z',
+            online: true,
+          },
+        }),
+      })
+      testWindow.__meetNexusWebSockets
+        ?.find((socket) => socket.protocol.startsWith('meetnexus.'))
+        ?.dispatchEvent(event)
+    })
+
+    await expect(
+      memberList.getByText('实时参会者', { exact: false }),
+    ).toBeVisible()
+  })
+
+  test('主持人可以管理成员录制任务', async ({ page }) => {
+    await page.addInitScript(
+      ({ storedRoomId, storedMemberId, token }) => {
+        class IsolatedWebSocket extends EventTarget {
+          close() {
+            this.dispatchEvent(new Event('close'))
+          }
+        }
+
+        Object.defineProperty(window, 'WebSocket', {
+          configurable: true,
+          value: IsolatedWebSocket,
+        })
+        sessionStorage.setItem(
+          'meetnexus.room-session',
+          JSON.stringify({
+            roomId: storedRoomId,
+            memberId: storedMemberId,
+            displayName: '测试主持人',
+            role: 'host',
+            sessionToken: token,
+          }),
+        )
+      },
+      {
+        storedRoomId: roomId,
+        storedMemberId: hostId,
+        token: sessionToken,
+      },
+    )
+
+    const recordingId = '55555555-5555-4555-8555-555555555555'
+    let recordings: Array<Record<string, unknown>> = []
+    await page.route(
+      /^http:\/\/127\.0\.0\.1:4173\/rooms(?:\/.*)?$/,
+      async (route) => {
+        const request = route.request()
+        const url = new URL(request.url())
+        if (url.pathname === `/rooms/${roomId}` && request.method() === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: roomDetailsResponse,
+          })
+          return
+        }
+        if (url.pathname.endsWith('/heartbeat')) {
+          await route.fulfill({ status: 204 })
+          return
+        }
+        if (url.pathname === `/rooms/${roomId}/recordings` && request.method() === 'GET') {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: recordings, request_id: requestId },
+          })
+          return
+        }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings/${hostId}` &&
+          request.method() === 'POST'
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          recordings = [
+            {
+              id: recordingId,
+              room_id: roomId,
+              member_id: hostId,
+              started_by: hostId,
+              live777_record_id: null,
+              mpd_path: '/room-test/1/manifest.mpd',
+              state: 'recording',
+              started_at: '2026-08-03T00:00:00Z',
+              stopped_at: null,
+            },
+          ]
+          await route.fulfill({
+            status: 201,
+            contentType: 'application/json',
+            json: { data: recordings[0], request_id: requestId },
+          })
+          return
+        }
+        if (
+          url.pathname === `/rooms/${roomId}/recordings/${recordingId}/stop` &&
+          request.method() === 'POST'
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          recordings = recordings.map((recording) => ({
+            ...recording,
+            state: 'stopped',
+            stopped_at: '2026-08-03T00:01:00Z',
+          }))
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            json: { data: recordings[0], request_id: requestId },
+          })
+          return
+        }
+        if (
+          url.pathname ===
+          `/rooms/${roomId}/recordings/${recordingId}/playback/manifest.mpd`
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/dash+xml',
+            body: `<?xml version="1.0"?><MPD><Period><AdaptationSet><Representation mimeType="audio/mp4" codecs="opus"><SegmentTemplate initialization="a_init.m4s" media="a_seg_$Number%04d$.m4s" startNumber="1"><SegmentTimeline><S t="0" d="96000" /></SegmentTimeline></SegmentTemplate></Representation></AdaptationSet></Period></MPD>`,
+          })
+          return
+        }
+        if (
+          url.pathname ===
+            `/rooms/${roomId}/recordings/${recordingId}/playback/a_init.m4s` ||
+          url.pathname ===
+            `/rooms/${roomId}/recordings/${recordingId}/playback/a_seg_0001.m4s`
+        ) {
+          expect(request.headers().authorization).toBe(`Bearer ${sessionToken}`)
+          await route.fulfill({
+            status: 200,
+            contentType: 'video/iso.segment',
+            body: Buffer.from([0, 1, 2]),
+          })
+          return
+        }
+        await route.fulfill({ status: 404 })
+      },
+    )
+
+    await page.goto(`/#/rooms/${roomId}`)
+    const startButton = page.getByRole('button', {
+      name: '开始录制',
+    })
+    await expect(startButton).toBeVisible()
+    await startButton.click()
+
+    const stopButton = page.getByRole('button', {
+      name: '停止录制',
+    })
+    await expect(stopButton).toBeVisible()
+    await stopButton.click()
+    await expect(page.getByText('已停止：', { exact: false })).toBeVisible()
+
+    await page.getByRole('button', { name: '播放回放' }).click()
+    await expect(page.getByLabel('录制回放画面')).toBeVisible()
   })
 
   test('没有房间成员身份时禁用媒体控制', async ({

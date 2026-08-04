@@ -11,7 +11,9 @@ interface MeetingMediaStageProps {
     displayName: string
     id: string
   }>
+  remoteScreenMemberIds: string[]
   roomId: string
+  sessionToken: string | null
 }
 
 export function MeetingMediaStage({
@@ -19,12 +21,16 @@ export function MeetingMediaStage({
   displayName,
   memberId,
   remoteMembers,
+  remoteScreenMemberIds,
   roomId,
+  sessionToken,
 }: MeetingMediaStageProps) {
   const media = useMeetingLocalMedia({
     memberId,
     remoteMemberIds: remoteMembers.map((member) => member.id),
+    remoteScreenMemberIds,
     roomId,
+    sessionToken,
   })
 
   return (
@@ -68,6 +74,24 @@ export function MeetingMediaStage({
                 )
               })}
             </div>
+          )}
+
+          {Object.entries(media.remoteScreenStreams).length > 0 && (
+            <section className="mt-4">
+              <h3 className="text-sm font-semibold">远端屏幕共享</h3>
+              <div className="mt-2 grid gap-4 md:grid-cols-2">
+                {remoteMembers.map((member) => {
+                  const stream = media.remoteScreenStreams[member.id]
+                  return stream === undefined ? null : (
+                    <RemoteVideoPreview
+                      displayName={`${member.displayName}的屏幕共享`}
+                      key={member.id}
+                      stream={stream}
+                    />
+                  )
+                })}
+              </div>
+            </section>
           )}
 
           <div className="mt-3 flex items-center justify-between gap-3 rounded-box bg-black/30 px-4 py-3">
@@ -117,6 +141,116 @@ export function MeetingMediaStage({
         className="card bg-base-100 shadow-xl"
       >
         <div className="card-body">
+          {canControlMedia && media.localStream === null && (
+            <section className="rounded-box border border-base-300 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">音视频设备</h3>
+                  <p className="mt-1 text-sm text-base-content/70">
+                    选择设备后再启动音视频。首次启动时浏览器会请求设备权限。
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-outline btn-sm"
+                    disabled={
+                      media.isIdentifyingDevices ||
+                      media.isRefreshingDevices
+                    }
+                    onClick={() => {
+                      void media.identifyDevices()
+                    }}
+                    type="button"
+                  >
+                    {media.isIdentifyingDevices
+                      ? '正在识别…'
+                      : '识别设备名称'}
+                  </button>
+
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={
+                      media.isIdentifyingDevices ||
+                      media.isRefreshingDevices
+                    }
+                    onClick={() => {
+                      void media.refreshDevices()
+                    }}
+                    type="button"
+                  >
+                    {media.isRefreshingDevices ? '正在刷新…' : '刷新设备列表'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <fieldset className="fieldset">
+                  <label
+                    className="fieldset-legend"
+                    htmlFor="meeting-camera-device"
+                  >
+                    摄像头设备
+                  </label>
+                  <select
+                    className="select w-full"
+                    disabled={
+                      media.isRefreshingDevices ||
+                      media.devices.cameras.length === 0
+                    }
+                    id="meeting-camera-device"
+                    onChange={(event) => {
+                      media.setSelectedCameraId(event.target.value)
+                    }}
+                    value={media.selectedCameraId}
+                  >
+                    <option value="">系统默认摄像头</option>
+                    {media.devices.cameras.map((camera) => (
+                      <option key={camera.deviceId} value={camera.deviceId}>
+                        {camera.label}
+                      </option>
+                    ))}
+                  </select>
+                </fieldset>
+
+                <fieldset className="fieldset">
+                  <label
+                    className="fieldset-legend"
+                    htmlFor="meeting-microphone-device"
+                  >
+                    麦克风设备
+                  </label>
+                  <select
+                    className="select w-full"
+                    disabled={
+                      media.isRefreshingDevices ||
+                      media.devices.microphones.length === 0
+                    }
+                    id="meeting-microphone-device"
+                    onChange={(event) => {
+                      media.setSelectedMicrophoneId(event.target.value)
+                    }}
+                    value={media.selectedMicrophoneId}
+                  >
+                    <option value="">系统默认麦克风</option>
+                    {media.devices.microphones.map((microphone) => (
+                      <option
+                        key={microphone.deviceId}
+                        value={microphone.deviceId}
+                      >
+                        {microphone.label}
+                      </option>
+                    ))}
+                  </select>
+                </fieldset>
+              </div>
+
+              <p className="mt-3 text-xs text-base-content/60">
+                首次使用请先点击“识别设备名称”并允许权限，以显示真实设备名称。设备启动后如需切换，请先释放音视频设备，再重新选择并启动。
+              </p>
+            </section>
+          )}
+
           <div className="flex flex-wrap justify-center gap-3">
             {media.localStream === null ? (
               <button
@@ -246,8 +380,8 @@ export function MeetingMediaStage({
           )}
 
           <p className="mt-3 text-center text-xs leading-5 text-base-content/60">
-            摄像头和麦克风通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
-            Live777。屏幕分享当前仍只用于本地预览。
+            摄像头、麦克风和屏幕分享均通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
+            Live777。
           </p>
         </div>
       </div>
@@ -258,7 +392,7 @@ export function MeetingMediaStage({
             <h2 className="card-title">本地屏幕分享</h2>
 
             <p className="text-sm text-base-content/70">
-              这是浏览器返回的共享画面和捕获信息，当前仅供本机检查。
+              这是浏览器返回的共享画面和捕获信息；共享流会同时发布给会议中的其他成员。
             </p>
 
             <ScreenSharePreview

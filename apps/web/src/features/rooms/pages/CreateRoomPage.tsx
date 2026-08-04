@@ -55,6 +55,7 @@ export function CreateRoomPage() {
         memberId: hostMember.id,
         displayName: hostMember.display_name,
         role: hostMember.role,
+        sessionToken: response.session_token,
       })
 
       window.location.hash = `#/rooms/${response.data.room.id}`

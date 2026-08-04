@@ -2,9 +2,14 @@ use std::process;
 
 use api::{
     config::AppConfig,
-    http::rooms::RoomApiState,
+    http::{
+        auth::SessionTokenService, events::RoomEventHub, health::ReadinessApiState,
+        rooms::RoomApiState,
+    },
     infrastructure::{
-        live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
+        live777::Live777Client, postgres::PgRoomRepository,
+        postgres_recordings::PgRecordingRepository, recording_storage::RecordingFileStorage,
+        redis_presence::RedisPresenceRepository,
     },
     telemetry,
 };
@@ -54,8 +59,10 @@ async fn main() {
         process::exit(1);
     }
     let state = RoomApiState {
-        rooms: PgRoomRepository::new(database),
-        presence: RedisPresenceRepository::new(redis),
+        rooms: PgRoomRepository::new(database.clone()),
+        presence: RedisPresenceRepository::new(redis.clone()),
+        session_tokens: SessionTokenService::new(&config.auth_jwt_secret),
+        event_hub: RoomEventHub::default(),
     };
     let live777 = Live777Client::new(&config.live777_url, config.live777_token.clone())
         .unwrap_or_else(|error| {
@@ -63,12 +70,31 @@ async fn main() {
             process::exit(1);
         });
     let media_state = api::http::media::MediaApiState {
-        live777,
+        live777: live777.clone(),
         rooms: state.rooms.clone(),
+        session_tokens: state.session_tokens.clone(),
+        event_hub: state.event_hub.clone(),
+    };
+    let recordings_state = api::http::recordings::RecordingApiState {
+        live777: live777.clone(),
+        recordings: PgRecordingRepository::new(database.clone()),
+        recording_files: RecordingFileStorage::new(config.recording_storage_root.clone()),
+        rooms: state.rooms.clone(),
+        session_tokens: state.session_tokens.clone(),
     };
 
-    if let Err(error) =
-        axum::serve(listener, api::app_with_rooms_and_media(state, media_state)).await
+    let readiness_state = ReadinessApiState::new(database, redis, live777);
+
+    if let Err(error) = axum::serve(
+        listener,
+        api::app_with_rooms_media_recordings_and_readiness(
+            state,
+            media_state,
+            recordings_state,
+            readiness_state,
+        ),
+    )
+    .await
     {
         tracing::error!(
             request_id = "-",

@@ -23,6 +23,25 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /ready:
+    get:
+      operationId: getReadiness
+      summary: 检查 API 及其依赖是否就绪
+      description: 检查 MeetNexus API 可连接 PostgreSQL、Redis 和 Live777。任一依赖不可用时返回 503；`/health` 仍仅用于存活探测。
+      tags:
+        - 系统
+      responses:
+        "200":
+          description: API 及全部依赖均已就绪
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
   /rooms:
     post:
       operationId: createRoom
@@ -44,7 +63,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoomDetailsResponse"
+                $ref: "#/components/schemas/CreateRoomResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
   /rooms/{room_id}:
@@ -92,7 +111,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoomMemberResponse"
+                $ref: "#/components/schemas/JoinRoomResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "404":
@@ -103,6 +122,8 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     delete:
       operationId: leaveRoom
+      security:
+        - BearerAuth: []
       summary: 离开会议
       tags:
         - 房间
@@ -111,6 +132,10 @@ paths:
           description: 已离开会议
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
   /rooms/{room_id}/members/{member_id}/heartbeat:
@@ -119,6 +144,8 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     post:
       operationId: refreshRoomMemberPresence
+      security:
+        - BearerAuth: []
       summary: 刷新成员在线状态
       description: 前端应定期调用；90 秒未刷新时该成员会从 Redis 在线集合过期。
       tags:
@@ -128,15 +155,196 @@ paths:
           description: 在线状态已刷新
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
         "404":
           $ref: "#/components/responses/MemberNotFound"
+  /rooms/{room_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: subscribeRoomEvents
+      summary: 订阅会议实时事件
+      description: 通过 WebSocket 接收成员、主媒体和屏幕共享事件。连接建立后会先下发当前正在发布主媒体或屏幕共享的成员快照，避免错过已开始的媒体。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
+      tags:
+        - 房间
+      security:
+        - WebSocketSession: []
+      responses:
+        "101":
+          description: WebSocket 升级成功
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+  /rooms/{room_id}/recordings:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listRoomRecordings
+      summary: 查询会议录制
+      description: 任何持有该会议成员令牌的成员可查询录制元数据；媒体文件访问将在回放接口中单独鉴权。
+      tags:
+        - 录制
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 录制列表
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+  /rooms/{room_id}/recordings/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: startRoomMemberRecording
+      summary: 开始录制成员主媒体流
+      description: 仅主持人可开始录制指定成员的摄像头和麦克风主媒体流。Live777 将输出 DASH MPD 与分片；每位成员单独录制，不进行服务端混流。
+      tags:
+        - 录制
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: 录制已开始
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
+        "409":
+          $ref: "#/components/responses/RecordingAlreadyActive"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /rooms/{room_id}/recordings/{recording_id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: recording_id
+        in: path
+        required: true
+        description: MeetNexus 录制编号。
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: stopRoomRecording
+      summary: 停止录制
+      description: 仅主持人可停止该会议中的活动录制。
+      tags:
+        - 录制
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 录制已停止
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+        "404":
+          $ref: "#/components/responses/RecordingNotFound"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /rooms/{room_id}/recordings/{recording_id}/playback/{file_name}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: recording_id
+        in: path
+        required: true
+        description: MeetNexus 录制编号。
+        schema:
+          type: string
+          format: uuid
+      - name: file_name
+        in: path
+        required: true
+        description: DASH 清单或与该清单同目录的初始化/媒体分片文件名；不接受目录、绝对路径或 `..`。
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 255
+    get:
+      operationId: getRoomRecordingPlaybackFile
+      summary: 读取录制回放文件
+      description: 仅持有目标会议成员令牌的成员可读取已停止录制的 DASH MPD 或 `.m4s` 分片。服务端根据录制元数据和录制根目录解析文件，客户端不得访问或拼接服务器文件系统路径。
+      tags:
+        - 录制
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 录制回放文件
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              example: private, no-store
+          content:
+            application/dash+xml:
+              schema:
+                type: string
+                format: binary
+            video/iso.segment:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/RoomMemberAccessDenied"
+        "404":
+          $ref: "#/components/responses/RecordingNotFound"
+        "409":
+          $ref: "#/components/responses/RecordingNotReady"
+        "503":
+          $ref: "#/components/responses/RecordingFileUnavailable"
   /media/whip/{room_id}/{member_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
       - $ref: "#/components/parameters/MemberId"
-      - $ref: "#/components/parameters/CurrentMemberId"
     post:
       operationId: publishRoomMedia
+      security:
+        - BearerAuth: []
       summary: 发布成员的音视频流
       description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员身份与发布者一致后，将请求代理至 Live777 WHIP。
       tags:
@@ -159,6 +367,8 @@ paths:
                 type: string
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
@@ -167,9 +377,10 @@ paths:
     parameters:
       - $ref: "#/components/parameters/RoomId"
       - $ref: "#/components/parameters/MemberId"
-      - $ref: "#/components/parameters/CurrentMemberId"
     post:
       operationId: subscribeRoomMedia
+      security:
+        - BearerAuth: []
       summary: 订阅成员的音视频流
       description: 浏览器提交 WebRTC SDP Offer。服务端校验当前成员属于房间后，将请求代理至 Live777 WHEP。
       tags:
@@ -192,6 +403,114 @@ paths:
                 type: string
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/whip/{room_id}/{member_id}/screen:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: publishRoomScreenShare
+      summary: 发布成员的屏幕共享流
+      description: 使用独立于摄像头/麦克风的 Live777 流标识发布屏幕共享，避免覆盖成员主媒体流。
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: 屏幕共享 SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/whep/{room_id}/{member_id}/screen:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: subscribeRoomScreenShare
+      summary: 订阅成员的屏幕共享流
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: 屏幕共享 SDP Answer 已创建
+          headers:
+            Location:
+              $ref: "#/components/headers/MediaSessionLocation"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/MediaAccessDenied"
+        "502":
+          $ref: "#/components/responses/MediaServiceUnavailable"
+  /media/screen-sessions/{room_id}/{stream_member_id}/{member_id}/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: stream_member_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/MemberId"
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+    delete:
+      operationId: closeRoomScreenShareSession
+      summary: 关闭屏幕共享媒体会话
+      tags:
+        - 媒体
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: 屏幕共享媒体会话已关闭
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
@@ -215,9 +534,10 @@ paths:
           type: string
           minLength: 1
           maxLength: 200
-      - $ref: "#/components/parameters/CurrentMemberId"
     delete:
       operationId: closeRoomMediaSession
+      security:
+        - BearerAuth: []
       summary: 关闭媒体会话
       description: 仅允许创建该 WHIP/WHEP 会话的当前成员关闭会话。
       tags:
@@ -227,11 +547,23 @@ paths:
           description: 媒体会话已关闭
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/MediaAccessDenied"
         "502":
           $ref: "#/components/responses/MediaServiceUnavailable"
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    WebSocketSession:
+      type: apiKey
+      in: header
+      name: Sec-WebSocket-Protocol
+      description: 以 `meetnexus.<JWT>` 子协议值传递的房间成员短期令牌。
   parameters:
     RoomId:
       name: room_id
@@ -244,14 +576,6 @@ components:
       name: member_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
-    CurrentMemberId:
-      name: X-Member-Id
-      in: header
-      required: true
-      description: 当前浏览器会话中的房间成员编号，用于校验媒体操作权限。
       schema:
         type: string
         format: uuid
@@ -269,6 +593,24 @@ components:
         type: string
         format: uri-reference
   responses:
+    SessionAuthenticationRequired:
+      description: 未提供、无效或已过期的房间成员会话令牌
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RoomMemberAccessDenied:
+      description: 会话令牌不属于目标房间或成员
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     InvalidRequest:
       description: 请求字段或路径参数无效
       headers:
@@ -323,6 +665,42 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    RecordingNotFound:
+      description: 录制不存在或不属于目标会议
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingNotReady:
+      description: 录制仍在进行或尚未生成回放文件
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingAlreadyActive:
+      description: 目标成员已有未停止的录制任务
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RecordingFileUnavailable:
+      description: 录制文件存储未配置、不可用或文件读取失败
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     MediaAccessDenied:
       description: 当前成员无权操作该媒体会话
       headers:
@@ -334,6 +712,15 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     MediaServiceUnavailable:
       description: Live777 媒体服务不可用或媒体协商失败
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    DependencyUnavailable:
+      description: PostgreSQL、Redis 或 Live777 尚未就绪
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"
@@ -361,6 +748,31 @@ components:
         version:
           type: string
           example: 0.1.0
+    ReadinessData:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - dependencies
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+        dependencies:
+          type: object
+          additionalProperties: false
+          required:
+            - postgresql
+            - redis
+            - live777
+          properties:
+            postgresql:
+              type: boolean
+            redis:
+              type: boolean
+            live777:
+              type: boolean
     CreateRoomRequest:
       type: object
       additionalProperties: false
@@ -389,6 +801,68 @@ components:
           minLength: 1
           maxLength: 40
           example: 小红
+    Recording:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - room_id
+        - member_id
+        - started_by
+        - state
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        member_id:
+          type: string
+          format: uuid
+        started_by:
+          type: string
+          format: uuid
+        live777_record_id:
+          type: string
+          nullable: true
+        mpd_path:
+          type: string
+          nullable: true
+          description: Live777 在录制存储中的 DASH MPD 相对路径；不得由客户端自行拼接为文件系统路径。
+        state:
+          type: string
+          enum: [recording, stopped]
+        started_at:
+          type: string
+          format: date-time
+        stopped_at:
+          type: string
+          format: date-time
+          nullable: true
+    RecordingResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/Recording"
+        request_id:
+          type: string
+          format: uuid
+    RecordingListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recording"
+        request_id:
+          type: string
+          format: uuid
     Room:
       type: object
       additionalProperties: false
@@ -455,16 +929,125 @@ components:
         request_id:
           type: string
           format: uuid
-    RoomMemberResponse:
+    CreateRoomResponse:
       type: object
       additionalProperties: false
       required:
         - data
+        - session_token
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/RoomDetails"
+        session_token:
+          $ref: "#/components/schemas/SessionToken"
+        request_id:
+          type: string
+          format: uuid
+    JoinRoomResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - session_token
         - request_id
       properties:
         data:
           $ref: "#/components/schemas/RoomMember"
+        session_token:
+          $ref: "#/components/schemas/SessionToken"
         request_id:
+          type: string
+          format: uuid
+    SessionToken:
+      type: string
+      minLength: 1
+      description: 当前房间成员的短期访问令牌；成员接口通过 Authorization Bearer 头传递，禁止写入 URL、日志或持久化存储。
+    RoomEvent:
+      oneOf:
+        - $ref: "#/components/schemas/RoomMemberJoinedEvent"
+        - $ref: "#/components/schemas/RoomMemberLeftEvent"
+        - $ref: "#/components/schemas/RoomMediaStartedEvent"
+        - $ref: "#/components/schemas/RoomMediaStoppedEvent"
+        - $ref: "#/components/schemas/RoomScreenShareStartedEvent"
+        - $ref: "#/components/schemas/RoomScreenShareStoppedEvent"
+        - $ref: "#/components/schemas/RoomResyncRequiredEvent"
+    RoomMemberJoinedEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+        - member
+      properties:
+        event:
+          type: string
+          enum: [member_joined]
+        member:
+          $ref: "#/components/schemas/RoomMember"
+    RoomMemberLeftEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+        - member_id
+      properties:
+        event:
+          type: string
+          enum: [member_left]
+        member_id:
+          type: string
+          format: uuid
+    RoomResyncRequiredEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event
+      properties:
+        event:
+          type: string
+          enum: [resync_required]
+    RoomMediaStartedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [media_started]
+        member_id:
+          type: string
+          format: uuid
+    RoomMediaStoppedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [media_stopped]
+        member_id:
+          type: string
+          format: uuid
+    RoomScreenShareStartedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [screen_share_started]
+        member_id:
+          type: string
+          format: uuid
+    RoomScreenShareStoppedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id]
+      properties:
+        event:
+          type: string
+          enum: [screen_share_stopped]
+        member_id:
           type: string
           format: uuid
     HealthResponse:
@@ -476,6 +1059,18 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/HealthData"
+        request_id:
+          type: string
+          format: uuid
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/ReadinessData"
         request_id:
           type: string
           format: uuid

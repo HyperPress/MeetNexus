@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, net::SocketAddr, str::FromStr};
+use std::{collections::HashMap, env, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use axum::http::Uri;
 use sqlx::postgres::PgConnectOptions;
@@ -6,6 +6,8 @@ use thiserror::Error;
 
 const DEFAULT_SERVER_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_RUST_LOG: &str = "api=info,tower_http=info";
+const DEFAULT_RECORDING_STORAGE_ROOT: &str =
+    "tools/live777/bin/live777-v0.9.0-x86_64-pc-windows-msvc/storage";
 
 #[derive(Clone)]
 pub struct AppConfig {
@@ -14,6 +16,8 @@ pub struct AppConfig {
     pub redis_url: String,
     pub live777_url: String,
     pub live777_token: Option<String>,
+    pub auth_jwt_secret: String,
+    pub recording_storage_root: PathBuf,
     pub rust_log: String,
 }
 
@@ -81,9 +85,20 @@ impl AppConfig {
         validate_live777_url(&live777_url)?;
 
         let live777_token = lookup("LIVE777_TOKEN").filter(|value| !value.trim().is_empty());
+        let auth_jwt_secret = required(&lookup, "AUTH_JWT_SECRET")?;
+        if auth_jwt_secret.len() < 32 {
+            return Err(ConfigError::Invalid {
+                name: "AUTH_JWT_SECRET",
+                reason: "JWT 签名密钥必须至少包含 32 个字符",
+            });
+        }
         let rust_log = lookup("RUST_LOG")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_RUST_LOG.to_owned());
+        let recording_storage_root = lookup("RECORDING_STORAGE_ROOT")
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_RECORDING_STORAGE_ROOT));
 
         Ok(Self {
             server_addr,
@@ -91,6 +106,8 @@ impl AppConfig {
             redis_url,
             live777_url,
             live777_token,
+            auth_jwt_secret,
+            recording_storage_root,
             rust_log,
         })
     }
@@ -123,15 +140,21 @@ fn validate_live777_url(value: &str) -> Result<(), ConfigError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, ConfigError};
+    use std::path::PathBuf;
 
-    const VALID_VALUES: [(&str, &str); 3] = [
+    use super::{AppConfig, ConfigError, DEFAULT_RECORDING_STORAGE_ROOT};
+
+    const VALID_VALUES: [(&str, &str); 4] = [
         (
             "DATABASE_URL",
             "postgres://meetnexus:password@localhost:5432/meetnexus",
         ),
         ("REDIS_URL", "redis://localhost:6379/0"),
         ("LIVE777_URL", "http://localhost:7777"),
+        (
+            "AUTH_JWT_SECRET",
+            "test-secret-that-is-long-enough-for-jwt-signing",
+        ),
     ];
 
     #[test]
@@ -146,6 +169,10 @@ mod tests {
 
         assert_eq!(config.server_addr.to_string(), "127.0.0.1:9090");
         assert_eq!(config.live777_token.as_deref(), Some("local-token"));
+        assert_eq!(
+            config.recording_storage_root,
+            PathBuf::from(DEFAULT_RECORDING_STORAGE_ROOT)
+        );
         assert_eq!(config.rust_log, "api=debug");
     }
 
@@ -160,7 +187,12 @@ mod tests {
 
     #[test]
     fn rejects_each_missing_required_value() {
-        for missing_name in ["DATABASE_URL", "REDIS_URL", "LIVE777_URL"] {
+        for missing_name in [
+            "DATABASE_URL",
+            "REDIS_URL",
+            "LIVE777_URL",
+            "AUTH_JWT_SECRET",
+        ] {
             let values = VALID_VALUES
                 .into_iter()
                 .filter(|(name, _)| *name != missing_name);

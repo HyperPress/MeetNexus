@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -13,12 +13,34 @@ use crate::{
     infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
 };
 
-use super::{ApiError, request_context::RequestContext, response::SuccessResponse};
+use super::{
+    ApiError,
+    auth::SessionTokenService,
+    events::{RoomEvent, RoomEventHub},
+    request_context::RequestContext,
+    response::SuccessResponse,
+};
 
 #[derive(Clone)]
 pub struct RoomApiState {
     pub rooms: PgRoomRepository,
     pub presence: RedisPresenceRepository,
+    pub session_tokens: SessionTokenService,
+    pub event_hub: RoomEventHub,
+}
+
+#[derive(Serialize)]
+struct CreateRoomResponse {
+    data: RoomDetails,
+    request_id: Uuid,
+    session_token: String,
+}
+
+#[derive(Serialize)]
+struct JoinRoomResponse {
+    data: crate::domain::RoomMember,
+    request_id: Uuid,
+    session_token: String,
 }
 
 #[derive(Deserialize)]
@@ -47,6 +69,7 @@ pub fn router(state: RoomApiState) -> Router {
             "/rooms/{room_id}/members/{member_id}/heartbeat",
             post(refresh_presence),
         )
+        .route("/rooms/{room_id}/events", get(super::events::subscribe))
         .with_state(state)
 }
 
@@ -54,12 +77,25 @@ async fn create_room(
     State(state): State<RoomApiState>,
     Extension(context): Extension<RequestContext>,
     body: Result<Json<CreateRoomRequest>, JsonRejection>,
-) -> Result<(StatusCode, Json<SuccessResponse<RoomDetails>>), ApiError> {
+) -> Result<(StatusCode, Json<CreateRoomResponse>), ApiError> {
     let Json(body) = parse_json(body, context.request_id())?;
     let details = service(&state)
         .create_room(&body.title, &body.display_name)
         .await
         .map_err(|error| map_error(error, context.request_id(), None, None))?;
+    let host = details.members.first().ok_or(ApiError::Internal {
+        request_id: context.request_id(),
+    })?;
+    let session_token =
+        state
+            .session_tokens
+            .issue(details.room.id, host.id, host.role, context.request_id())?;
+    state.event_hub.publish(
+        details.room.id,
+        RoomEvent::MemberJoined {
+            member: host.clone(),
+        },
+    );
     log_room_event(
         context.request_id(),
         details.room.id,
@@ -68,9 +104,10 @@ async fn create_room(
     );
     Ok((
         StatusCode::CREATED,
-        Json(SuccessResponse {
+        Json(CreateRoomResponse {
             data: details,
             request_id: context.request_id(),
+            session_token,
         }),
     ))
 }
@@ -97,13 +134,23 @@ async fn join_room(
     Extension(context): Extension<RequestContext>,
     Path(room_id): Path<String>,
     body: Result<Json<JoinRoomRequest>, JsonRejection>,
-) -> Result<(StatusCode, Json<SuccessResponse<crate::domain::RoomMember>>), ApiError> {
+) -> Result<(StatusCode, Json<JoinRoomResponse>), ApiError> {
     let room_id = parse_id(&room_id, context.request_id())?;
     let Json(body) = parse_json(body, context.request_id())?;
     let member = service(&state)
         .join_room(room_id, &body.display_name)
         .await
         .map_err(|error| map_error(error, context.request_id(), Some(room_id), None))?;
+    let session_token =
+        state
+            .session_tokens
+            .issue(room_id, member.id, member.role, context.request_id())?;
+    state.event_hub.publish(
+        room_id,
+        RoomEvent::MemberJoined {
+            member: member.clone(),
+        },
+    );
     log_room_event(
         context.request_id(),
         room_id,
@@ -112,9 +159,10 @@ async fn join_room(
     );
     Ok((
         StatusCode::CREATED,
-        Json(SuccessResponse {
+        Json(JoinRoomResponse {
             data: member,
             request_id: context.request_id(),
+            session_token,
         }),
     ))
 }
@@ -123,13 +171,18 @@ async fn leave_room(
     State(state): State<RoomApiState>,
     Extension(context): Extension<RequestContext>,
     Path((room_id, member_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let room_id = parse_id(&room_id, context.request_id())?;
     let member_id = parse_id(&member_id, context.request_id())?;
+    authorize_session(&state, &headers, room_id, member_id, context.request_id())?;
     service(&state)
         .leave_room(room_id, member_id)
         .await
         .map_err(|error| map_error(error, context.request_id(), Some(room_id), Some(member_id)))?;
+    state
+        .event_hub
+        .publish(room_id, RoomEvent::MemberLeft { member_id });
     log_room_event(
         context.request_id(),
         room_id,
@@ -143,9 +196,11 @@ async fn refresh_presence(
     State(state): State<RoomApiState>,
     Extension(context): Extension<RequestContext>,
     Path((room_id, member_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let room_id = parse_id(&room_id, context.request_id())?;
     let member_id = parse_id(&member_id, context.request_id())?;
+    authorize_session(&state, &headers, room_id, member_id, context.request_id())?;
     service(&state)
         .refresh_presence(room_id, member_id)
         .await
@@ -161,6 +216,24 @@ async fn refresh_presence(
 
 fn service(state: &RoomApiState) -> RoomService<PgRoomRepository, RedisPresenceRepository> {
     RoomService::new(state.rooms.clone(), state.presence.clone())
+}
+
+fn authorize_session(
+    state: &RoomApiState,
+    headers: &axum::http::HeaderMap,
+    room_id: Uuid,
+    member_id: Uuid,
+    request_id: Uuid,
+) -> Result<(), ApiError> {
+    if state
+        .session_tokens
+        .authenticate(headers, request_id)?
+        .authorizes(room_id, member_id)
+    {
+        Ok(())
+    } else {
+        Err(ApiError::RoomMemberAccessDenied { request_id })
+    }
 }
 
 fn parse_id(value: &str, request_id: Uuid) -> Result<Uuid, ApiError> {

@@ -64,6 +64,7 @@ export function JoinRoomPage() {
         memberId: response.data.id,
         displayName: response.data.display_name,
         role: response.data.role,
+        sessionToken: response.session_token,
       })
 
       window.location.hash = `#/rooms/${roomIdResult.data}`

@@ -17,16 +17,22 @@
 - 完成会前设备检测与本地预览：支持浏览器摄像头和麦克风权限请求、本地视频预览、设备选择、音视频开关、摄像头镜像切换、屏幕分享测试与捕获信息展示、页面离开时释放媒体资源和中文错误提示。
 - 完成后端房间模块代码：定义创建、查询、加入、离开与心跳的 OpenAPI 契约；实现领域校验、房间用例、HTTP 路由、PostgreSQL 房间仓储、Redis 在线状态仓储，以及首个 SQLx 迁移文件。
 - 完成前端真实房间 HTTP 流程：增加与 OpenAPI 对应的 Zod 请求/响应模型、统一 HTTP 客户端、房间 API 适配层和标签页级成员会话；创建与加入页面已接入真实接口，并新增房间查询、成员列表、30 秒心跳、主动离开和中文错误状态。
-- 完成会议房间界面与本地媒体控制：房间成员可以在会议页面启动、关闭和释放本机摄像头与麦克风，切换摄像头镜像，并进行本地屏幕分享预览；没有房间成员身份的访客只能查看房间信息，不能操作媒体设备。所有本地媒体轨道均在页面卸载时释放，当前不向服务器或其他成员发送音视频。
+- 完成会议房间界面与媒体控制：房间成员可以在会议页面选择、启动、关闭和释放本机摄像头与麦克风，切换摄像头镜像，并发布独立的屏幕共享流；没有房间成员身份的访客只能查看房间信息，不能操作媒体设备。所有本地媒体轨道均在页面卸载时释放。
 - 完成源码公开展示准备：补充 MIT License，完善当前阶段、技术栈、本机运行和文档入口说明。
 - 公开准备修改文件：`LICENSE`、`README.md` 与 `docs/STATUS.md`。
 - 公开准备验证通过：Rust 格式检查、Clippy、Rust 测试、前端 Oxlint、TypeScript 静态检查和 Vite 生产构建。
 - 新增根目录 `.env.example`，保存 PostgreSQL、Redis、Live777 与 API 的非敏感本机连接模板，并明确真实密码和 Token 不得提交。
-- 完成 Live777 音视频闭环：新增同源 WHIP/WHEP SDP 代理、房间成员校验、Live777 Bearer Token 转发和媒体会话回收；会议页支持摄像头/麦克风发布、远端订阅、连接状态和断线重连，屏幕共享仍保持本地预览。
+- 完成 Live777 音视频闭环：新增同源 WHIP/WHEP SDP 代理、房间成员校验、Live777 Bearer Token 转发和媒体会话回收；会议页支持摄像头/麦克风发布、远端订阅、连接状态、断线重连和独立屏幕共享发布。
+- 完成房间成员会话鉴权：创建或加入会议时签发绑定房间与成员的短期 JWT；心跳、离开、WHIP/WHEP 协商及媒体会话关闭均使用 Bearer 令牌，不再信任客户端传入的 `X-Member-Id`。
+- 完成房间 WebSocket 实时事件：成员以受保护的子协议订阅会议事件，成员加入或离开时前端即时刷新成员列表；事件积压时请求重新同步，成员列表不再按 5 秒轮询。
+- 完成屏幕共享独立发布与远端订阅：屏幕共享通过专用 WHIP/WHEP 路由、独立 Live777 流 ID 和独立媒体会话关闭地址发布；房间事件驱动其他成员自动订阅、展示并在停止共享时清理远端屏幕画面。
+- 完成服务就绪探测：`/health` 保持 API 进程存活语义，新增 `/ready` 并并发验证 PostgreSQL、Redis 与 Live777；依赖不可用时返回统一的 503 错误。同步修正屏幕共享订阅者关闭 WHEP 会话时误广播停止事件的问题。
+- 完成主媒体发布状态同步：主媒体开始/停止由房间 WebSocket 广播并维护连接快照，前端只订阅正在发布的远端成员，避免在空流上提前协商导致后续轨道无法到达。
+- 完成录制任务与元数据：主持人可通过受保护接口为指定成员主媒体流调用 Live777 recorder 启动或停止逐成员录制；录制编号、MPD 路径、状态和时间保存至 PostgreSQL。
 
 ## 进行中
 
-- 暂无。
+- 等待在具备实体摄像头、麦克风和扬声器的两台浏览器上完成手动音视频验收；自动化与隔离 Chromium 媒体验收已完成。
 
 ## 下一步
 
@@ -36,7 +42,6 @@
 
 ## 阻塞项
 
-- 本次健康检查仅验证 API 进程存活，尚未实现 PostgreSQL、Redis 与 Live777 的就绪探测。
 - 真实 PostgreSQL/Redis 测试依赖开发机提供连接信息并预先执行 SQLx 迁移，默认 `cargo test` 会跳过该用例。
 
 ## 验证结果
@@ -50,9 +55,37 @@
 - 2026-07-30：前端真实房间 HTTP 流程修改后 Oxlint、TypeScript/Vite 生产构建与 12 项 Playwright 测试全部通过；端到端测试覆盖原有设备预览、镜像、屏幕分享，以及房间创建、加入、查询、心跳、离开、会话清理和异常响应契约校验。
 - 2026-07-28：本机配置模板通过 `git diff --check`，确认 `.env.example` 可跟踪且真实 `.env` 继续被 Git 忽略。
 - 2026-08-03：Live777 媒体代理修改通过 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test`（12 个单元测试、8 个 HTTP 测试通过，1 个外部存储测试按设计跳过）；前端 Oxlint、TypeScript/Vite 构建和 15 项 Playwright 测试通过。新增的媒体回归测试使用显式隔离的 PeerConnection 与媒体代理响应，不依赖开发机设备或本机 Live777；真实双人音视频仍需在本机服务就绪时手动验收。
+- 2026-08-03：房间成员会话鉴权修改通过 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test`（13 个单元测试、9 个 HTTP 测试通过，1 个外部存储测试按设计跳过）；前端 Oxlint、TypeScript/Vite 生产构建和 15 项 Playwright 测试通过。实际启动 API 后 `/health` 返回 200；新增 HTTP 回归覆盖缺少令牌的 401 与令牌成员不匹配的 403。
+- 2026-08-03：房间实时事件修改通过后端事件单元测试、前端 Oxlint、TypeScript/Vite 生产构建和 11 项房间 Playwright 测试；端到端测试覆盖受保护的 WebSocket 子协议、令牌不出现在 URL，以及成员事件触发成员列表重新加载。
+- 2026-08-03：在本机 PostgreSQL、Memurai、Live777 与 API 进程均已运行时完成真实 WebSocket 验收：创建者订阅房间事件后，另一成员加入会议，客户端收到 `member_joined` 且事件成员编号与加入响应一致。
+- 2026-08-03：屏幕共享独立流修改通过 Rust 格式检查、Clippy、后端 14 个单元测试和 9 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试；1 个真实 PostgreSQL/Redis 测试按设计跳过。
+- 2026-08-03：远端屏幕订阅修改通过 Rust 格式检查、Clippy、后端 14 个单元测试和 9 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试；1 个真实 PostgreSQL/Redis 测试按设计跳过。
+- 2026-08-03：服务就绪探测与屏幕共享事件边界修正通过 Rust 格式检查、Clippy、14 个后端单元测试、10 个 HTTP 测试，以及真实 PostgreSQL/Redis 存储测试；本机 `/health` 与 `/ready` 均返回 200，`/ready` 确认三项依赖均已就绪。隔离 HTTP 测试覆盖依赖不可连接时的统一 503 响应，且依赖探测超时限制为 2 秒。
+- 2026-08-03：主媒体状态事件修改通过 Rust 格式检查、Clippy、16 个后端单元测试、10 个 HTTP 测试，以及前端 Oxlint、TypeScript/Vite 生产构建和 16 项 Playwright 测试。使用两个独立 Chromium 虚拟摄像头/麦克风浏览器连接当前本机 API 与 Live777，双向 WHIP/WHEP 均返回 201，双方页面均出现带 2 条音视频轨道的远端流。
+- 2026-08-03：录制任务迁移已应用至本机 PostgreSQL，后端格式检查、测试和 Clippy 通过。使用 Chromium 虚拟摄像头/麦克风发布真实主媒体流后，录制启动、列表查询和停止均通过当前 API 与 Live777 成功验证，录制状态由 `recording` 变为 `stopped`。
 - 2026-07-31：会议房间界面与本地媒体控制修改通过前端 Oxlint、TypeScript/Vite 生产构建和 14 项 Playwright 端到端测试；自动化媒体测试使用隔离的 Chromium 测试设备，真实摄像头、麦克风与系统屏幕选择器仍需手动验证。当前媒体能力仅限本机预览，尚未接入 WHIP/WHEP。
 
 ## 最近变更
+
+- 2026-08-03：补强会议页首次设备选择。新增显式“识别设备名称”操作：用户授权后临时媒体轨道会立即释放，再刷新真实摄像头与麦克风名称，随后可选择设备并启动；不会发布识别过程中的临时流。前端 lint、生产构建和 17 项 Playwright 测试通过。
+
+- 2026-08-03：修正会议页屏幕共享遗留文案。屏幕共享已通过独立的同源 WHIP/WHEP 媒体流发布给其他成员，页面不再错误提示“仅用于本地预览”。
+
+- 2026-08-03：修复会议页只能使用默认摄像头和麦克风的问题。会议成员现在可在启动音视频前刷新设备列表、选择具体摄像头与麦克风；选择值会以 `deviceId.exact` 传入浏览器媒体请求，设备启动后须先释放再切换。前端 lint、生产构建和 17 项 Playwright 测试通过，其中媒体用例验证了精确设备约束。
+
+- 2026-08-03：补充项目手册中的实体设备人工验收清单，明确双人真实摄像头/麦克风/扬声器、断线恢复、屏幕共享、录制回放及离开清理的逐项预期，并要求记录 `request_id` 而非敏感凭据。当前仅此人工验收尚待执行。
+
+- 2026-08-03：录制启动的重复保护下沉到 PostgreSQL 局部唯一索引 `recordings_one_active_per_member`，消除并发请求同时越过应用层预检查而创建两条活动录制的竞态；约束冲突会停止本次 Live777 recorder 并返回既有的 `409 RECORDING_ALREADY_ACTIVE`。
+
+- 2026-08-03：会议页接入不新增第三方依赖的原生 MediaSource DASH 回放播放器。播放器通过成员 Bearer 令牌按需读取 MPD、初始化分片和媒体分片；Playwright 覆盖受保护文件请求与缓冲流程。使用真实 Live777 录制文件完成 Chromium MediaSource 验收，音频轨道已成功追加并得到 3.52 秒有效时长。
+
+- 2026-08-03：新增 `scripts/start-api.ps1`，从本机 `.env` 加载允许的 API 配置并将 `RECORDING_STORAGE_ROOT` 转为绝对路径。使用隔离 Chromium 虚拟设备完成真实 WHIP 发布、Live777 录制、停止和受保护 MPD 文件读取验收：回放接口返回 `200`、`application/dash+xml`、`private, no-store`，且清单非空。
+
+- 2026-08-03：录制启动接口新增活动录制重复保护：同一成员已有未停止录制时返回 `409 RECORDING_ALREADY_ACTIVE`，不会再次调用 Live777 启动 recorder。OpenAPI、后端格式检查、18 项单元测试、10 项 HTTP 测试和 Clippy 已同步通过；API `/ready` 返回 200。
+
+- 2026-08-03：会议页新增主持人逐成员开始/停止录制控制和录制状态列表；前端 API 响应经 Zod 校验，新增 Playwright 用例覆盖录制开始、停止和 Bearer 鉴权请求。Oxlint、TypeScript/Vite 生产构建和 17 项 Playwright 测试通过。
+
+- 2026-08-03：新增受保护的录制回放文件接口。仅目标会议成员可读取已停止录制的 DASH MPD 与同目录 `.m4s` 分片；接口限制文件在 `RECORDING_STORAGE_ROOT` 内，拒绝绝对路径、目录穿越及非回放文件。后端格式检查、18 项单元测试、10 项 HTTP 测试和 Clippy 通过；本机 `/ready` 返回 200。
 
 - 2026-07-28：完成后端健康检查、配置校验、统一错误模型、请求关联与结构化日志基础能力。
 - 2026-07-21：放弃 WOOM MVP 路线，恢复 Rust/Axum AI Native 技术基线；保留本机直接运行方式。
@@ -68,6 +101,13 @@
 - 2026-07-30：纠正首页、README、项目手册、架构和状态文档中的完成边界；补充 SQLx 迁移运行说明、严格 JSON 请求校验、房间日志上下文和 3 个离线房间 HTTP 契约测试。
 - 2026-07-30：前端增加 Zod 房间契约、统一 HTTP 客户端和真实房间业务流程；创建者与参会者身份保存在 `sessionStorage`，房间页面定期发送在线心跳，并支持查询成员和主动离开。
 - 2026-08-03：新增 `services/api/src/infrastructure/live777.rs`、`services/api/src/http/media.rs`、`apps/web/src/lib/media/whipWhep.ts` 与媒体端到端测试；更新 OpenAPI 的 WHIP/WHEP/会话关闭契约，会议页通过同源代理接入 Live777。
+- 2026-08-03：新增 `services/api/src/http/auth.rs`，为房间成员签发和校验短期 JWT；更新房间和媒体 API 的 OpenAPI 安全契约、前端会话存储与 Bearer 请求头，并在 `.env.example` 中增加 `AUTH_JWT_SECRET`。
+- 2026-08-03：新增 `services/api/src/http/events.rs` 与前端房间事件连接，更新 WebSocket OpenAPI 契约、Vite WebSocket 代理和房间事件端到端测试。
+- 2026-08-03：新增 `/ready` OpenAPI 契约与 API 依赖就绪探测，更新本机运行说明；修正屏幕共享订阅者回收 WHEP 会话时误广播停止事件。
+- 2026-08-03：新增主媒体开始/停止 WebSocket 事件及连接快照，前端据此延后 WHEP 订阅到远端媒体已发布之后。
+- 2026-08-03：新增录制 OpenAPI 契约、录制 PostgreSQL 迁移、Live777 recorder 适配器及主持人受保护的启动/停止/查询接口。
+- 2026-08-03：新增屏幕共享独立 WHIP/WHEP 与会话关闭契约，前端屏幕分享开始后通过单独媒体流发布，停止或页面卸载时回收该会话。
+- 2026-08-03：屏幕共享开始/停止事件接入房间 WebSocket，前端根据事件自动建立或清理独立 WHEP 订阅，并显示远端屏幕画面。
 - 修改文件：`apps/web/src/schemas/room.ts`、`apps/web/src/lib/api/httpClient.ts`、`apps/web/src/features/rooms/api/roomApi.ts`、`apps/web/src/features/rooms/session/roomSession.ts`、`apps/web/src/features/rooms/pages/CreateRoomPage.tsx`、`apps/web/src/features/rooms/pages/JoinRoomPage.tsx`、`apps/web/src/features/rooms/pages/RoomPage.tsx`、`apps/web/src/app/AppRouter.tsx`、`apps/web/tests/e2e/room-pages.spec.ts`、`apps/web/vite.config.ts`、`docs/ARCHITECTURE.md`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。
 - 修改文件：`README.md`、`apps/web/src/features/rooms/pages/HomePage.tsx`、`apps/web/tests/e2e/room-pages.spec.ts`、`docs/ARCHITECTURE.md`、`docs/LOCAL_SETUP.md`、`docs/PROJECT_MANUAL.md`、`docs/STATUS.md`、`services/api/migrations/README.md`、`services/api/src/http/rooms.rs`、`services/api/tests/http.rs`。
 - 2026-07-31：会议房间页面接入浏览器本地摄像头、麦克风和屏幕分享控制，复用现有本地媒体适配层与预览组件；新增房间成员媒体操作权限限制和页面卸载资源清理。

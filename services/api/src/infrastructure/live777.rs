@@ -1,6 +1,7 @@
 use std::str;
 
 use axum::http::{StatusCode, Uri};
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -20,6 +21,12 @@ pub struct Live777Response {
     pub content_type: Option<String>,
     pub session_id: Option<String>,
     pub status: StatusCode,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Live777Recording {
+    pub mpd_path: String,
+    pub record_id: String,
 }
 
 #[derive(Debug, Error)]
@@ -75,11 +82,63 @@ impl Live777Client {
             .await
     }
 
+    /// 确认 Live777 的 HTTP 服务可连接并能返回有效响应。
+    /// 根路径通常返回 404，这仍表示 SFU 已就绪，因此仅将 5xx 视为不可用。
+    pub async fn probe(&self) -> Result<(), Live777Error> {
+        let response = self.request("GET", "", &[]).await?;
+        if response.status.is_server_error() {
+            return Err(Live777Error::InvalidResponse);
+        }
+        Ok(())
+    }
+
+    pub async fn start_recording(&self, stream_id: &str) -> Result<Live777Recording, Live777Error> {
+        let response = self
+            .request_with_content_type(
+                "POST",
+                &format!("/api/record/{stream_id}"),
+                b"{}",
+                Some("application/json"),
+            )
+            .await?;
+        if !response.status.is_success() {
+            return Err(Live777Error::InvalidResponse);
+        }
+        serde_json::from_slice(&response.body).map_err(|_| Live777Error::InvalidResponse)
+    }
+
+    pub async fn stop_recording(&self, stream_id: &str) -> Result<(), Live777Error> {
+        let response = self
+            .request("DELETE", &format!("/api/record/{stream_id}"), &[])
+            .await?;
+        if response.status.is_success() {
+            Ok(())
+        } else {
+            Err(Live777Error::InvalidResponse)
+        }
+    }
+
     async fn request(
         &self,
         method: &str,
         endpoint: &str,
         body: &[u8],
+    ) -> Result<Live777Response, Live777Error> {
+        self.request_with_content_type(
+            method,
+            endpoint,
+            body,
+            (!body.is_empty()).then_some("application/sdp"),
+        )
+        .await
+    }
+
+    async fn request_with_content_type(
+        &self,
+        method: &str,
+        endpoint: &str,
+        body: &[u8],
+        content_type: Option<&str>,
     ) -> Result<Live777Response, Live777Error> {
         let authority = self
             .base_uri
@@ -96,11 +155,9 @@ impl Live777Client {
             .as_deref()
             .map(|token| format!("Authorization: Bearer {token}\r\n"))
             .unwrap_or_default();
-        let content_type = if body.is_empty() {
-            ""
-        } else {
-            "Content-Type: application/sdp\r\n"
-        };
+        let content_type = content_type
+            .map(|value| format!("Content-Type: {value}\r\n"))
+            .unwrap_or_default();
         let request = format!(
             "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{authorization}{content_type}Content-Length: {}\r\nConnection: close\r\n\r\n",
             body.len(),

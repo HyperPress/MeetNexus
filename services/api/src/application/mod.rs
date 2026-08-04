@@ -4,7 +4,7 @@ use chrono::Utc;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{self, MemberId, MemberRole, Room, RoomDetails, RoomId, RoomMember};
+use crate::domain::{self, MemberId, MemberRole, Recording, Room, RoomDetails, RoomId, RoomMember};
 
 #[derive(Debug, Error, Clone)]
 #[error("存储操作失败：{message}")]
@@ -39,6 +39,23 @@ pub trait PresenceRepository: Send + Sync {
     async fn mark_online(&self, room_id: RoomId, member_id: MemberId) -> Result<(), StorageError>;
     async fn mark_offline(&self, room_id: RoomId, member_id: MemberId) -> Result<(), StorageError>;
     async fn online_member_ids(&self, room_id: RoomId) -> Result<HashSet<MemberId>, StorageError>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait RecordingRepository: Send + Sync {
+    async fn create_recording(&self, recording: &Recording) -> Result<(), StorageError>;
+    async fn find_recording(
+        &self,
+        room_id: RoomId,
+        recording_id: Uuid,
+    ) -> Result<Option<Recording>, StorageError>;
+    async fn list_recordings(&self, room_id: RoomId) -> Result<Vec<Recording>, StorageError>;
+    async fn mark_recording_stopped(
+        &self,
+        room_id: RoomId,
+        recording_id: Uuid,
+        stopped_at: chrono::DateTime<Utc>,
+    ) -> Result<Option<Recording>, StorageError>;
 }
 
 impl<T: RoomRepository + ?Sized> RoomRepository for &T {

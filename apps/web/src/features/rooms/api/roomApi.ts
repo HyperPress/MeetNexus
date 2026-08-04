@@ -96,6 +96,28 @@ export function refreshRoomMemberPresence(
   )
 }
 
+export function updateRoomMemberMediaState(
+  roomId: string,
+  memberId: string,
+  sessionToken: string,
+  state: {
+    cameraEnabled: boolean
+    microphoneEnabled: boolean
+  },
+): Promise<void> {
+  return requestNoContent(
+    `${memberPath(roomId, memberId)}/media-state`,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      method: 'POST',
+      body: JSON.stringify({
+        camera_enabled: state.cameraEnabled,
+        microphone_enabled: state.microphoneEnabled,
+      }),
+    },
+  )
+}
+
 function recordingPath(roomId: string): string {
   return `${roomPath(roomId)}/recordings`
 }

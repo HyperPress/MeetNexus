@@ -13,6 +13,7 @@ import {
   leaveRoom,
   leaveRoomOnPageExit,
   refreshRoomMemberPresence,
+  updateRoomMemberMediaState,
 } from '../api/roomApi'
 import { connectRoomEvents } from '../api/roomEvents'
 import {
@@ -45,6 +46,9 @@ export function RoomPage({ roomId }: RoomPageProps) {
   >(null)
   const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
   const [mediaMemberIds, setMediaMemberIds] = useState<string[]>([])
+  const [memberMediaStates, setMemberMediaStates] = useState<
+    Record<string, { cameraEnabled: boolean; microphoneEnabled: boolean }>
+  >({})
   const leaveStartedRef = useRef(false)
 
   const currentSession =
@@ -125,6 +129,15 @@ export function RoomPage({ roomId }: RoomPageProps) {
               memberIds.filter((memberId) => memberId !== event.member_id),
             )
           }
+          if (event.event === 'media_state_changed') {
+            setMemberMediaStates((states) => ({
+              ...states,
+              [event.member_id]: {
+                cameraEnabled: event.camera_enabled,
+                microphoneEnabled: event.microphone_enabled,
+              },
+            }))
+          }
           void loadRoom()
         },
         roomId: activeSession.roomId,
@@ -142,6 +155,26 @@ export function RoomPage({ roomId }: RoomPageProps) {
       disconnect()
     }
   }, [currentSession, loadRoom])
+
+  const handleMediaStateChange = useCallback(
+    (state: { cameraEnabled: boolean; microphoneEnabled: boolean }) => {
+      if (currentSession === null) {
+        return
+      }
+
+      setMemberMediaStates((states) => ({
+        ...states,
+        [currentSession.memberId]: state,
+      }))
+      void updateRoomMemberMediaState(
+        currentSession.roomId,
+        currentSession.memberId,
+        currentSession.sessionToken,
+        state,
+      )
+    },
+    [currentSession],
+  )
 
   useEffect(() => {
     if (currentSession === null) {
@@ -370,6 +403,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
               currentSession?.displayName ?? '未加入会议的访客'
             }
             memberId={currentSession?.memberId ?? null}
+            onMediaStateChange={handleMediaStateChange}
             remoteMembers={roomDetails.members
               .filter(
                 (member) =>
@@ -377,8 +411,12 @@ export function RoomPage({ roomId }: RoomPageProps) {
                   mediaMemberIds.includes(member.id),
               )
               .map((member) => ({
+                cameraEnabled:
+                  memberMediaStates[member.id]?.cameraEnabled ?? false,
                 id: member.id,
                 displayName: member.display_name,
+                microphoneEnabled:
+                  memberMediaStates[member.id]?.microphoneEnabled ?? false,
               }))}
             remoteScreenMemberIds={screenShareMemberIds.filter(
               (memberId) => memberId !== currentSession?.memberId,

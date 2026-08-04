@@ -30,6 +30,7 @@ pub struct RoomEventHub {
 struct RoomEventState {
     active_media_member_ids: HashSet<Uuid>,
     active_screen_member_ids: HashSet<Uuid>,
+    member_media_states: HashMap<Uuid, MemberMediaState>,
     sender: broadcast::Sender<RoomEvent>,
 }
 
@@ -37,17 +38,42 @@ struct RoomEventState {
 pub struct RoomMediaSnapshot {
     active_media_member_ids: Vec<Uuid>,
     active_screen_member_ids: Vec<Uuid>,
+    member_media_states: Vec<MemberMediaState>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct MemberMediaState {
+    pub member_id: Uuid,
+    pub camera_enabled: bool,
+    pub microphone_enabled: bool,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum RoomEvent {
-    MemberJoined { member: RoomMember },
-    MemberLeft { member_id: Uuid },
-    MediaStarted { member_id: Uuid },
-    MediaStopped { member_id: Uuid },
-    ScreenShareStarted { member_id: Uuid },
-    ScreenShareStopped { member_id: Uuid },
+    MemberJoined {
+        member: RoomMember,
+    },
+    MemberLeft {
+        member_id: Uuid,
+    },
+    MediaStarted {
+        member_id: Uuid,
+    },
+    MediaStopped {
+        member_id: Uuid,
+    },
+    MediaStateChanged {
+        member_id: Uuid,
+        camera_enabled: bool,
+        microphone_enabled: bool,
+    },
+    ScreenShareStarted {
+        member_id: Uuid,
+    },
+    ScreenShareStopped {
+        member_id: Uuid,
+    },
     ResyncRequired,
 }
 
@@ -72,6 +98,21 @@ impl RoomEventHub {
                 }
                 RoomEvent::MediaStopped { member_id } => {
                     room.active_media_member_ids.remove(member_id);
+                    room.member_media_states.remove(member_id);
+                }
+                RoomEvent::MediaStateChanged {
+                    member_id,
+                    camera_enabled,
+                    microphone_enabled,
+                } => {
+                    room.member_media_states.insert(
+                        *member_id,
+                        MemberMediaState {
+                            member_id: *member_id,
+                            camera_enabled: *camera_enabled,
+                            microphone_enabled: *microphone_enabled,
+                        },
+                    );
                 }
                 RoomEvent::ScreenShareStarted { member_id } => {
                     room.active_screen_member_ids.insert(*member_id);
@@ -82,6 +123,7 @@ impl RoomEventHub {
                 RoomEvent::MemberLeft { member_id } => {
                     room.active_media_member_ids.remove(member_id);
                     room.active_screen_member_ids.remove(member_id);
+                    room.member_media_states.remove(member_id);
                 }
                 RoomEvent::MemberJoined { .. } | RoomEvent::ResyncRequired => {}
             }
@@ -98,6 +140,7 @@ impl RoomEventHub {
             RoomMediaSnapshot {
                 active_media_member_ids: room.active_media_member_ids.iter().copied().collect(),
                 active_screen_member_ids: room.active_screen_member_ids.iter().copied().collect(),
+                member_media_states: room.member_media_states.values().cloned().collect(),
             },
         )
     }
@@ -114,6 +157,7 @@ fn new_room_event_state() -> RoomEventState {
     RoomEventState {
         active_media_member_ids: HashSet::new(),
         active_screen_member_ids: HashSet::new(),
+        member_media_states: HashMap::new(),
         sender: broadcast::channel(EVENT_CHANNEL_CAPACITY).0,
     }
 }
@@ -208,6 +252,21 @@ async fn handle_socket(
             return;
         }
     }
+    for state in snapshot.member_media_states {
+        if send_event(
+            &mut socket,
+            RoomEvent::MediaStateChanged {
+                member_id: state.member_id,
+                camera_enabled: state.camera_enabled,
+                microphone_enabled: state.microphone_enabled,
+            },
+        )
+        .await
+        .is_err()
+        {
+            return;
+        }
+    }
 
     loop {
         tokio::select! {
@@ -297,10 +356,21 @@ mod tests {
                 member_id: screen_member_id,
             },
         );
+        hub.publish(
+            room_id,
+            RoomEvent::MediaStateChanged {
+                member_id: media_member_id,
+                camera_enabled: false,
+                microphone_enabled: true,
+            },
+        );
         let (_, snapshot) = hub.subscribe(room_id);
 
         assert_eq!(snapshot.active_media_member_ids, vec![media_member_id]);
         assert_eq!(snapshot.active_screen_member_ids, vec![screen_member_id]);
+        assert_eq!(snapshot.member_media_states.len(), 1);
+        assert!(!snapshot.member_media_states[0].camera_enabled);
+        assert!(snapshot.member_media_states[0].microphone_enabled);
 
         hub.publish(
             room_id,

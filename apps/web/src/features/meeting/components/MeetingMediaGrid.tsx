@@ -10,8 +10,10 @@ type MeetingLayoutMode = 'grid' | 'focus'
 type MeetingTileKind = 'camera' | 'screen'
 
 interface RemoteMember {
+  cameraEnabled: boolean
   displayName: string
   id: string
+  microphoneEnabled: boolean
 }
 
 interface MeetingMediaGridProps {
@@ -415,12 +417,16 @@ export function MeetingMediaGrid({
 
       nextTiles.push({
         cameraEnabled:
-          stream !== null && hasLiveTrack(stream, 'video'),
+          member.cameraEnabled &&
+          stream !== null &&
+          hasLiveTrack(stream, 'video'),
         id: `remote-camera-${member.id}`,
         kind: 'camera',
         label: member.displayName,
         microphoneEnabled:
-          stream !== null && hasLiveTrack(stream, 'audio'),
+          member.microphoneEnabled &&
+          stream !== null &&
+          hasLiveTrack(stream, 'audio'),
         mirrored: false,
         muted: false,
         stream,

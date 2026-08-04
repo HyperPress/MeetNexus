@@ -25,6 +25,10 @@ import {
 
 interface MeetingMediaOptions {
   memberId: string | null
+  onMediaStateChange?: (state: {
+    cameraEnabled: boolean
+    microphoneEnabled: boolean
+  }) => void
   remoteMemberIds: string[]
   remoteScreenMemberIds: string[]
   roomId: string
@@ -38,6 +42,7 @@ const emptyDevices: LocalMediaDevices = {
 
 export function useMeetingLocalMedia({
   memberId,
+  onMediaStateChange,
   remoteMemberIds,
   remoteScreenMemberIds,
   roomId,
@@ -91,6 +96,13 @@ export function useMeetingLocalMedia({
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<
     Record<string, MediaStream>
   >({})
+
+  const notifyMediaStateChange = useCallback(
+    (cameraEnabled: boolean, microphoneEnabled: boolean) => {
+      onMediaStateChange?.({ cameraEnabled, microphoneEnabled })
+    },
+    [onMediaStateChange],
+  )
 
   const refreshDevices = useCallback(async () => {
     setIsRefreshingDevices(true)
@@ -190,10 +202,11 @@ export function useMeetingLocalMedia({
     setLocalStream(null)
     setCameraEnabled(false)
     setMicrophoneEnabled(false)
+    notifyMediaStateChange(false, false)
     setMediaErrorMessage(null)
     setConnectionStatus('未连接')
     setStatusMessage('摄像头和麦克风已释放。')
-  }, [closePublishSession])
+  }, [closePublishSession, notifyMediaStateChange])
 
   const stopScreenSharing = useCallback(() => {
     const currentStream = screenStreamRef.current
@@ -225,8 +238,13 @@ export function useMeetingLocalMedia({
     setScreenInfo(null)
     setCameraEnabled(false)
     setMicrophoneEnabled(false)
+    notifyMediaStateChange(false, false)
     setConnectionStatus('未连接')
-  }, [closePublishSession, closeScreenPublishSession])
+  }, [
+    closePublishSession,
+    closeScreenPublishSession,
+    notifyMediaStateChange,
+  ])
 
   useEffect(() => {
     mountedRef.current = true
@@ -324,10 +342,11 @@ export function useMeetingLocalMedia({
       stopLocalMedia(previousStream)
 
       setLocalStream(nextStream)
-      setCameraEnabled(nextStream.getVideoTracks().length > 0)
-      setMicrophoneEnabled(
-        nextStream.getAudioTracks().length > 0,
-      )
+      const nextCameraEnabled = nextStream.getVideoTracks().length > 0
+      const nextMicrophoneEnabled = nextStream.getAudioTracks().length > 0
+      setCameraEnabled(nextCameraEnabled)
+      setMicrophoneEnabled(nextMicrophoneEnabled)
+      notifyMediaStateChange(nextCameraEnabled, nextMicrophoneEnabled)
       void refreshDevices()
       setStatusMessage('本地音视频设备已启动，正在连接媒体服务。')
       void publishLocalStream(nextStream)
@@ -344,6 +363,7 @@ export function useMeetingLocalMedia({
     }
   }, [
     isStartingDevices,
+    notifyMediaStateChange,
     publishLocalStream,
     refreshDevices,
     selectedCameraId,
@@ -487,7 +507,8 @@ export function useMeetingLocalMedia({
 
     setLocalTrackEnabled(currentStream, 'video', nextEnabled)
     setCameraEnabled(nextEnabled)
-  }, [cameraEnabled])
+    notifyMediaStateChange(nextEnabled, microphoneEnabled)
+  }, [cameraEnabled, microphoneEnabled, notifyMediaStateChange])
 
   const toggleMicrophone = useCallback(() => {
     const currentStream = localStreamRef.current
@@ -500,7 +521,8 @@ export function useMeetingLocalMedia({
 
     setLocalTrackEnabled(currentStream, 'audio', nextEnabled)
     setMicrophoneEnabled(nextEnabled)
-  }, [microphoneEnabled])
+    notifyMediaStateChange(cameraEnabled, nextEnabled)
+  }, [cameraEnabled, microphoneEnabled, notifyMediaStateChange])
 
   const toggleMirror = useCallback(() => {
     setCameraMirrored((currentValue) => !currentValue)

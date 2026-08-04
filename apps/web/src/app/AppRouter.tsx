@@ -77,6 +77,37 @@ function NotFoundPage() {
   )
 }
 
+function MeetNexusLogo() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-8 w-8 shrink-0"
+      fill="none"
+      viewBox="0 0 32 32"
+    >
+      <defs>
+        <linearGradient
+          id="meetnexus-logo-gradient"
+          x1="5"
+          x2="28"
+          y1="5"
+          y2="28"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#b026ff" />
+          <stop offset="0.52" stopColor="#7c3aed" />
+          <stop offset="1" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
+
+      <path
+        d="M9.1 4h19.4l-6.2 8.4h6.1L14.7 29l2.7-11H4l6.5-8.5H6.2L9.1 4Z"
+        fill="url(#meetnexus-logo-gradient)"
+      />
+    </svg>
+  )
+}
+
 export function AppRouter() {
   const [route, setRoute] = useState<Route>(readRoute)
 
@@ -122,8 +153,9 @@ export function AppRouter() {
     <div className="flex min-h-screen flex-col bg-base-200">
       <header className="navbar border-b border-base-300 bg-base-100 px-4 sm:px-8">
         <div className="navbar-start">
-          <a className="btn btn-ghost text-xl" href="#/">
-            MeetNexus
+          <a className="btn btn-ghost gap-2 text-xl" href="#/">
+            <MeetNexusLogo />
+            <span>MeetNexus</span>
           </a>
         </div>
 

@@ -206,13 +206,11 @@ export function RoomPage({ roomId }: RoomPageProps) {
     document.addEventListener('click', handleNavigationClick, true)
     window.addEventListener('hashchange', handleRouteChange)
     window.addEventListener('popstate', handleRouteChange)
-    window.addEventListener('pagehide', leaveWithoutWaiting)
 
     return () => {
       document.removeEventListener('click', handleNavigationClick, true)
       window.removeEventListener('hashchange', handleRouteChange)
       window.removeEventListener('popstate', handleRouteChange)
-      window.removeEventListener('pagehide', leaveWithoutWaiting)
     }
   }, [currentSession, leaveWithoutWaiting, roomId])
 

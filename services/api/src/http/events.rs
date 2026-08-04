@@ -36,6 +36,7 @@ struct RoomEventState {
     active_screen_member_ids: HashSet<Uuid>,
     chat_history: Vec<RoomChatMessage>,
     raised_hands: HashMap<Uuid, String>,
+    member_media_states: HashMap<Uuid, MemberMediaState>,
     sender: broadcast::Sender<RoomEvent>,
 }
 
@@ -45,6 +46,7 @@ pub struct RoomEventSnapshot {
     active_screen_member_ids: Vec<Uuid>,
     chat_history: Vec<RoomChatMessage>,
     raised_hands: Vec<RaisedHand>,
+    member_media_states: Vec<MemberMediaState>,
 }
 
 #[derive(Clone, Serialize)]
@@ -63,6 +65,13 @@ struct RaisedHand {
 }
 
 #[derive(Clone, Serialize)]
+pub struct MemberMediaState {
+    pub member_id: Uuid,
+    pub camera_enabled: bool,
+    pub microphone_enabled: bool,
+}
+
+#[derive(Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum RoomEvent {
     MemberJoined {
@@ -76,6 +85,11 @@ pub enum RoomEvent {
     },
     MediaStopped {
         member_id: Uuid,
+    },
+    MediaStateChanged {
+        member_id: Uuid,
+        camera_enabled: bool,
+        microphone_enabled: bool,
     },
     ScreenShareStarted {
         member_id: Uuid,
@@ -133,6 +147,21 @@ impl RoomEventHub {
                 }
                 RoomEvent::MediaStopped { member_id } => {
                     room.active_media_member_ids.remove(member_id);
+                    room.member_media_states.remove(member_id);
+                }
+                RoomEvent::MediaStateChanged {
+                    member_id,
+                    camera_enabled,
+                    microphone_enabled,
+                } => {
+                    room.member_media_states.insert(
+                        *member_id,
+                        MemberMediaState {
+                            member_id: *member_id,
+                            camera_enabled: *camera_enabled,
+                            microphone_enabled: *microphone_enabled,
+                        },
+                    );
                 }
                 RoomEvent::ScreenShareStarted { member_id } => {
                     room.active_screen_member_ids.insert(*member_id);
@@ -161,6 +190,7 @@ impl RoomEventHub {
                     room.active_media_member_ids.remove(member_id);
                     room.active_screen_member_ids.remove(member_id);
                     room.raised_hands.remove(member_id);
+                    room.member_media_states.remove(member_id);
                 }
                 RoomEvent::MemberJoined { .. }
                 | RoomEvent::CommandRejected { .. }
@@ -188,6 +218,7 @@ impl RoomEventHub {
                         display_name: display_name.clone(),
                     })
                     .collect(),
+                member_media_states: room.member_media_states.values().cloned().collect(),
             },
         )
     }
@@ -206,6 +237,7 @@ fn new_room_event_state() -> RoomEventState {
         active_screen_member_ids: HashSet::new(),
         chat_history: Vec::new(),
         raised_hands: HashMap::new(),
+        member_media_states: HashMap::new(),
         sender: broadcast::channel(EVENT_CHANNEL_CAPACITY).0,
     }
 }
@@ -318,6 +350,21 @@ async fn handle_socket(
                 member_id: raised_hand.member_id,
                 display_name: raised_hand.display_name,
                 raised: true,
+            },
+        )
+        .await
+        .is_err()
+        {
+            return;
+        }
+    }
+    for state in snapshot.member_media_states {
+        if send_event(
+            &mut socket,
+            RoomEvent::MediaStateChanged {
+                member_id: state.member_id,
+                camera_enabled: state.camera_enabled,
+                microphone_enabled: state.microphone_enabled,
             },
         )
         .await
@@ -533,10 +580,21 @@ mod tests {
                 member_id: screen_member_id,
             },
         );
+        hub.publish(
+            room_id,
+            RoomEvent::MediaStateChanged {
+                member_id: media_member_id,
+                camera_enabled: false,
+                microphone_enabled: true,
+            },
+        );
         let (_, snapshot) = hub.subscribe(room_id);
 
         assert_eq!(snapshot.active_media_member_ids, vec![media_member_id]);
         assert_eq!(snapshot.active_screen_member_ids, vec![screen_member_id]);
+        assert_eq!(snapshot.member_media_states.len(), 1);
+        assert!(!snapshot.member_media_states[0].camera_enabled);
+        assert!(snapshot.member_media_states[0].microphone_enabled);
 
         hub.publish(
             room_id,

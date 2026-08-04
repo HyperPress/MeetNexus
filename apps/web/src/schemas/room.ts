@@ -1,9 +1,25 @@
 import { z } from 'zod'
 
 export const UuidSchema = z.uuid()
-export const MeetingCodeSchema = z
+const CanonicalMeetingCodeSchema = z
   .string()
   .regex(/^\d{3}-\d{3}-\d{3}$/, '请输入有效的会议号。')
+
+export function normalizeMeetingCode(value: string): string {
+  const trimmed = value.trim()
+  const digits = trimmed.replaceAll('-', '')
+
+  if (/^\d{9}$/.test(digits)) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+  }
+
+  return trimmed
+}
+
+export const MeetingCodeSchema = z
+  .string()
+  .transform(normalizeMeetingCode)
+  .pipe(CanonicalMeetingCodeSchema)
 export const DateTimeSchema = z.iso.datetime({
   offset: true,
 })
@@ -96,6 +112,12 @@ export const RoomEventSchema = z.discriminatedUnion('event', [
   z.strictObject({
     event: z.literal('media_stopped'),
     member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('media_state_changed'),
+    member_id: UuidSchema,
+    camera_enabled: z.boolean(),
+    microphone_enabled: z.boolean(),
   }),
   z.strictObject({
     event: z.literal('screen_share_started'),

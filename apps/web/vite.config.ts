@@ -11,6 +11,7 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    host: true,
     proxy: {
       '/health': apiProxy,
       '/media': apiProxy,

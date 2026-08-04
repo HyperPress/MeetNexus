@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,8 +10,10 @@ type MeetingLayoutMode = 'grid' | 'focus'
 type MeetingTileKind = 'camera' | 'screen'
 
 interface RemoteMember {
+  cameraEnabled?: boolean
   displayName: string
   id: string
+  microphoneEnabled?: boolean
 }
 
 interface MeetingMediaGridProps {
@@ -26,11 +29,11 @@ interface MeetingMediaGridProps {
 }
 
 interface MeetingTile {
-  cameraEnabled: boolean
+  cameraEnabled?: boolean
   id: string
   kind: MeetingTileKind
   label: string
-  microphoneEnabled: boolean
+  microphoneEnabled?: boolean
   mirrored: boolean
   muted: boolean
   stream: MediaStream | null
@@ -140,6 +143,49 @@ interface MediaStatusIconsProps {
   microphoneEnabled: boolean
 }
 
+function useMediaTrackVersion(stream: MediaStream | null) {
+  const [, setTrackVersion] = useState(0)
+
+  useEffect(() => {
+    if (stream === null) {
+      return
+    }
+
+    const watchedTracks = new Set<MediaStreamTrack>()
+    const refresh = () => {
+      setTrackVersion((version) => version + 1)
+    }
+    const watchTrack = (track: MediaStreamTrack) => {
+      if (watchedTracks.has(track)) {
+        return
+      }
+
+      watchedTracks.add(track)
+      track.addEventListener('ended', refresh)
+      track.addEventListener('mute', refresh)
+      track.addEventListener('unmute', refresh)
+    }
+    const handleTrackAdded = (event: MediaStreamTrackEvent) => {
+      watchTrack(event.track)
+      refresh()
+    }
+
+    stream.getTracks().forEach(watchTrack)
+    stream.addEventListener('addtrack', handleTrackAdded)
+    stream.addEventListener('removetrack', refresh)
+
+    return () => {
+      stream.removeEventListener('addtrack', handleTrackAdded)
+      stream.removeEventListener('removetrack', refresh)
+      for (const track of watchedTracks) {
+        track.removeEventListener('ended', refresh)
+        track.removeEventListener('mute', refresh)
+        track.removeEventListener('unmute', refresh)
+      }
+    }
+  }, [stream])
+}
+
 function MediaStatusIcons({
   cameraEnabled,
   microphoneEnabled,
@@ -169,25 +215,89 @@ function MeetingVideoTile({
   tile,
 }: MeetingVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaybackBlocked, setIsPlaybackBlocked] = useState(false)
+  useMediaTrackVersion(tile.stream)
+
+  const tryToPlayAudio = useCallback((audio: HTMLAudioElement) => {
+    void audio.play().then(
+      () => {
+        setIsPlaybackBlocked(false)
+      },
+      () => {
+        if (!tile.muted) {
+          setIsPlaybackBlocked(true)
+        }
+      },
+    )
+  }, [tile.muted])
 
   useEffect(() => {
     const video = videoRef.current
+    const audio = audioRef.current
+    const audioTracks = new Set<MediaStreamTrack>()
 
-    if (video === null) {
-      return
+    const retryAudioPlayback = () => {
+      if (audio !== null) {
+        tryToPlayAudio(audio)
+      }
     }
 
-    video.srcObject = tile.stream
+    const watchAudioTrack = (track: MediaStreamTrack) => {
+      if (track.kind !== 'audio' || audioTracks.has(track)) {
+        return
+      }
+      audioTracks.add(track)
+      track.addEventListener('unmute', retryAudioPlayback)
+    }
+
+    const handleTrackAdded = (event: MediaStreamTrackEvent) => {
+      watchAudioTrack(event.track)
+      retryAudioPlayback()
+    }
+
+    if (video !== null) {
+      video.srcObject = tile.stream
+      void video.play().catch(() => {
+        // 静音画面播放失败时不影响远端声音的单独授权。
+      })
+    }
+
+    if (audio !== null) {
+      audio.srcObject = tile.stream
+      setIsPlaybackBlocked(false)
+      tryToPlayAudio(audio)
+      tile.stream?.getAudioTracks().forEach(watchAudioTrack)
+      tile.stream?.addEventListener('addtrack', handleTrackAdded)
+    }
 
     return () => {
-      video.srcObject = null
+      if (video !== null) {
+        video.srcObject = null
+      }
+      if (audio !== null) {
+        audio.srcObject = null
+      }
+      tile.stream?.removeEventListener('addtrack', handleTrackAdded)
+      for (const track of audioTracks) {
+        track.removeEventListener('unmute', retryAudioPlayback)
+      }
     }
-  }, [tile.cameraEnabled, tile.stream])
+  }, [tile.cameraEnabled, tile.stream, tryToPlayAudio])
 
   const firstCharacter = tile.label.trim().charAt(0) || '会'
+  const hasVideoTrack =
+    tile.stream !== null && hasLiveTrack(tile.stream, 'video')
+  const hasAudioTrack =
+    tile.stream !== null && hasLiveTrack(tile.stream, 'audio')
+  const displayedCameraEnabled = tile.cameraEnabled ?? hasVideoTrack
+  const displayedMicrophoneEnabled =
+    tile.microphoneEnabled ?? hasAudioTrack
+  // 远端轨道会在 WHEP 协商完成后才异步加入 MediaStream。未收到
+  // 明确的“摄像头关闭”状态前，必须先挂载 video 元素以接收该轨道。
   const showVideo =
     tile.stream !== null &&
-    (tile.kind === 'screen' || tile.cameraEnabled)
+    (tile.kind === 'screen' || tile.cameraEnabled !== false)
 
   return (
     <article
@@ -211,7 +321,7 @@ function MeetingVideoTile({
                 ? 'aspect-video h-full min-h-52 w-full -scale-x-100 object-cover'
                 : 'aspect-video h-full min-h-52 w-full object-cover'
           }
-          muted={tile.muted}
+          muted
           playsInline
         />
       ) : (
@@ -229,6 +339,34 @@ function MeetingVideoTile({
         </div>
       )}
 
+      {tile.stream !== null && !tile.muted && (
+        <audio
+          ref={audioRef}
+          aria-label={`${tile.label}的远端声音`}
+          autoPlay
+          className="hidden"
+        />
+      )}
+
+      {isPlaybackBlocked && (
+        <div className="absolute inset-x-3 top-3 z-10 flex justify-end">
+          <button
+            aria-label={`开启${tile.label}的声音`}
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              const audio = audioRef.current
+
+              if (audio !== null) {
+                tryToPlayAudio(audio)
+              }
+            }}
+            type="button"
+          >
+            点击开启声音
+          </button>
+        </div>
+      )}
+
       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 px-3 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <p className="truncate rounded-full bg-black/55 px-3 py-1.5 text-sm font-medium text-white">
@@ -241,8 +379,8 @@ function MeetingVideoTile({
             </span>
           ) : (
             <MediaStatusIcons
-              cameraEnabled={tile.cameraEnabled}
-              microphoneEnabled={tile.microphoneEnabled}
+              cameraEnabled={displayedCameraEnabled}
+              microphoneEnabled={displayedMicrophoneEnabled}
             />
           )}
         </div>
@@ -331,13 +469,11 @@ export function MeetingMediaGrid({
       const stream = remoteStreams[member.id] ?? null
 
       nextTiles.push({
-        cameraEnabled:
-          stream !== null && hasLiveTrack(stream, 'video'),
+        cameraEnabled: member.cameraEnabled,
         id: `remote-camera-${member.id}`,
         kind: 'camera',
         label: member.displayName,
-        microphoneEnabled:
-          stream !== null && hasLiveTrack(stream, 'audio'),
+        microphoneEnabled: member.microphoneEnabled,
         mirrored: false,
         muted: false,
         stream,
@@ -352,11 +488,11 @@ export function MeetingMediaGrid({
 
       const fallbackName = `成员 ${memberId.slice(0, 8)}`
       nextTiles.push({
-        cameraEnabled: hasLiveTrack(stream, 'video'),
+        cameraEnabled: undefined,
         id: `remote-camera-${memberId}`,
         kind: 'camera',
         label: fallbackName,
-        microphoneEnabled: hasLiveTrack(stream, 'audio'),
+        microphoneEnabled: undefined,
         mirrored: false,
         muted: false,
         stream,

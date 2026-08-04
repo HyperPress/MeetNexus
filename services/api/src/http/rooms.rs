@@ -64,6 +64,13 @@ struct JoinRoomByCodeRequest {
     display_name: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateMemberMediaStateRequest {
+    camera_enabled: bool,
+    microphone_enabled: bool,
+}
+
 pub fn router(state: RoomApiState) -> Router {
     Router::new()
         .route("/rooms", post(create_room))
@@ -77,6 +84,10 @@ pub fn router(state: RoomApiState) -> Router {
         .route(
             "/rooms/{room_id}/members/{member_id}/heartbeat",
             post(refresh_presence),
+        )
+        .route(
+            "/rooms/{room_id}/members/{member_id}/media-state",
+            post(update_member_media_state),
         )
         .route("/rooms/{room_id}/events", get(super::events::subscribe))
         .with_state(state)
@@ -238,10 +249,6 @@ async fn leave_room(
         Some(member_id),
         "room_member_left",
     );
-    if outcome.room_closed {
-        log_room_event(context.request_id(), room_id, None, "room_closed_empty");
-        state.event_hub.close_room(room_id);
-    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -263,6 +270,34 @@ async fn refresh_presence(
         room_id,
         Some(member_id),
         "room_member_heartbeat",
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn update_member_media_state(
+    State(state): State<RoomApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((room_id, member_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+    body: Result<Json<UpdateMemberMediaStateRequest>, JsonRejection>,
+) -> Result<StatusCode, ApiError> {
+    let room_id = parse_id(&room_id, context.request_id())?;
+    let member_id = parse_id(&member_id, context.request_id())?;
+    let Json(body) = parse_json(body, context.request_id())?;
+    authorize_session(&state, &headers, room_id, member_id, context.request_id())?;
+    state.event_hub.publish(
+        room_id,
+        RoomEvent::MediaStateChanged {
+            member_id,
+            camera_enabled: body.camera_enabled,
+            microphone_enabled: body.microphone_enabled,
+        },
+    );
+    log_room_event(
+        context.request_id(),
+        room_id,
+        Some(member_id),
+        "room_member_media_state_changed",
     );
     Ok(StatusCode::NO_CONTENT)
 }

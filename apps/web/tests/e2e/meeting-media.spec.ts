@@ -9,6 +9,7 @@ const sessionToken = 'test-media-session-token'
 async function installIsolatedPeerConnection(page: Page) {
   await page.addInitScript(() => {
     const testWindow = window as typeof window & {
+      __meetNexusEmitMediaStarted?: () => void
       __meetNexusMediaConstraints?: MediaStreamConstraints[]
     }
     const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
@@ -98,6 +99,9 @@ async function installIsolatedPeerConnection(page: Page) {
         if (!this.receivesRemoteMedia) {
           return
         }
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 200)
+        })
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: true,
@@ -117,7 +121,7 @@ async function installIsolatedPeerConnection(page: Page) {
     class IsolatedWebSocket extends EventTarget {
       constructor() {
         super()
-        queueMicrotask(() => {
+        const emitMediaStarted = () => {
           const event = new Event('message')
           Object.defineProperty(event, 'data', {
             value: JSON.stringify({
@@ -126,7 +130,9 @@ async function installIsolatedPeerConnection(page: Page) {
             }),
           })
           this.dispatchEvent(event)
-        })
+        }
+        testWindow.__meetNexusEmitMediaStarted = emitMediaStarted
+        queueMicrotask(emitMediaStarted)
       }
 
       close() {
@@ -259,6 +265,15 @@ test.describe('MeetNexus 音视频媒体流程', () => {
         request.method() === 'POST' &&
         new URL(request.url()).pathname.startsWith('/media/whip/'),
     )
+    let subscribeRequestCount = 0
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname.startsWith('/media/whep/')
+      ) {
+        subscribeRequestCount += 1
+      }
+    })
     const firstSubscribe = page.waitForRequest(
       (request) =>
         request.method() === 'POST' &&
@@ -268,6 +283,15 @@ test.describe('MeetNexus 音视频媒体流程', () => {
     await page.getByRole('button', { name: '启动音视频设备' }).click()
     await firstPublish
     await firstSubscribe
+    await page.evaluate(() => {
+      ;(
+        window as typeof window & {
+          __meetNexusEmitMediaStarted?: () => void
+        }
+      ).__meetNexusEmitMediaStarted?.()
+    })
+    await page.waitForTimeout(250)
+    expect(subscribeRequestCount).toBe(1)
 
     const mediaConstraints = await page.evaluate(() => {
       const testWindow = window as typeof window & {

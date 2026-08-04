@@ -122,15 +122,24 @@ pub fn validate_display_name(value: &str) -> Result<String, DomainError> {
 
 pub fn validate_meeting_code(value: &str) -> Result<String, DomainError> {
     let value = value.trim();
-    let valid = value.len() == 11
-        && value.bytes().enumerate().all(|(index, byte)| {
-            matches!(index, 3 | 7) && byte == b'-'
-                || !matches!(index, 3 | 7) && byte.is_ascii_digit()
-        });
+    let digits = value.replace('-', "");
+    let valid = digits.len() == 9
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && (value.len() == 9
+            || value.len() == 11
+                && value.bytes().enumerate().all(|(index, byte)| {
+                    matches!(index, 3 | 7) && byte == b'-'
+                        || !matches!(index, 3 | 7) && byte.is_ascii_digit()
+                }));
     if !valid {
         return Err(DomainError::InvalidMeetingCode);
     }
-    Ok(value.to_owned())
+    Ok(format!(
+        "{}-{}-{}",
+        &digits[0..3],
+        &digits[3..6],
+        &digits[6..9]
+    ))
 }
 
 #[cfg(test)]
@@ -143,6 +152,7 @@ mod tests {
         assert!(validate_room_title("").is_err());
         assert!(validate_display_name(&"a".repeat(41)).is_err());
         assert_eq!(validate_meeting_code("123-456-789").unwrap(), "123-456-789");
-        assert!(validate_meeting_code("123456789").is_err());
+        assert_eq!(validate_meeting_code("123456789").unwrap(), "123-456-789");
+        assert!(validate_meeting_code("123-456789").is_err());
     }
 }

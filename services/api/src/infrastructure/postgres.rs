@@ -67,13 +67,12 @@ impl RoomRepository for PgRoomRepository {
         transaction.commit().await.map_err(storage_error)
     }
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError> {
-        let row = sqlx::query(
-            "SELECT id, meeting_code, title, created_at FROM rooms WHERE id = $1 AND closed_at IS NULL",
-        )
-        .bind(room_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(storage_error)?;
+        let row =
+            sqlx::query("SELECT id, meeting_code, title, created_at FROM rooms WHERE id = $1")
+                .bind(room_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(storage_error)?;
         row.map(|row| {
             Ok(Room {
                 id: row.try_get("id").map_err(storage_error)?,
@@ -91,7 +90,7 @@ impl RoomRepository for PgRoomRepository {
         meeting_code: &str,
     ) -> Result<Option<Room>, StorageError> {
         let row = sqlx::query(
-            "SELECT id, meeting_code, title, created_at FROM rooms WHERE meeting_code = $1 AND closed_at IS NULL",
+            "SELECT id, meeting_code, title, created_at FROM rooms WHERE meeting_code = $1",
         )
         .bind(meeting_code)
         .fetch_optional(&self.pool)
@@ -114,14 +113,13 @@ impl RoomRepository for PgRoomRepository {
     }
     async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<bool, StorageError> {
         let mut transaction = self.pool.begin().await.map_err(storage_error)?;
-        let room_is_open =
-            sqlx::query("SELECT 1 FROM rooms WHERE id = $1 AND closed_at IS NULL FOR UPDATE")
-                .bind(room_id)
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(storage_error)?
-                .is_some();
-        if !room_is_open {
+        let room_exists = sqlx::query("SELECT 1 FROM rooms WHERE id = $1 FOR UPDATE")
+            .bind(room_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(storage_error)?
+            .is_some();
+        if !room_exists {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(false);
         }
@@ -145,21 +143,20 @@ impl RoomRepository for PgRoomRepository {
         .map_err(storage_error)?
         .is_some())
     }
-    async fn leave_member_and_close_empty_room(
+    async fn leave_member(
         &self,
         room_id: RoomId,
         member_id: MemberId,
         left_at: DateTime<Utc>,
     ) -> Result<LeaveRoomOutcome, StorageError> {
         let mut transaction = self.pool.begin().await.map_err(storage_error)?;
-        let room_is_open =
-            sqlx::query("SELECT 1 FROM rooms WHERE id = $1 AND closed_at IS NULL FOR UPDATE")
-                .bind(room_id)
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(storage_error)?
-                .is_some();
-        if !room_is_open {
+        let room_exists = sqlx::query("SELECT 1 FROM rooms WHERE id = $1 FOR UPDATE")
+            .bind(room_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(storage_error)?
+            .is_some();
+        if !room_exists {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(LeaveRoomOutcome::default());
         }
@@ -176,25 +173,7 @@ impl RoomRepository for PgRoomRepository {
         .rows_affected()
             == 1;
 
-        let room_closed = if member_left {
-            sqlx::query(
-                "UPDATE rooms SET closed_at = $2 WHERE id = $1 AND closed_at IS NULL AND NOT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND left_at IS NULL)",
-            )
-            .bind(room_id)
-            .bind(left_at)
-            .execute(&mut *transaction)
-            .await
-            .map_err(storage_error)?
-            .rows_affected()
-                == 1
-        } else {
-            false
-        };
-
         transaction.commit().await.map_err(storage_error)?;
-        Ok(LeaveRoomOutcome {
-            member_left,
-            room_closed,
-        })
+        Ok(LeaveRoomOutcome { member_left })
     }
 }

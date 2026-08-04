@@ -2,8 +2,12 @@
 
 ## 最新完成
 
+- 2026-08-04：`feat/chat-hand-interactions` 同步最新 `main`，合并保留成员音视频状态、远端订阅恢复、TURN 配置、刷新会话修复与聊天/举手功能。冲突仅在房间页、事件中心和进度文档中按字段与事件逐项组合，没有整文件覆盖其他成员实现。前端 lint、生产构建和 15 项真实房间 Playwright 用例通过；Rust 格式检查通过，Rust 编译仍受当前环境缺少 MSVC `link.exe` 限制。`meeting-media.spec.ts` 的既有首个 WHEP 请求等待存在时序竞争，本次未改动 `main` 的媒体实现或测试。
 - 2026-08-04：重新设计会议页右侧互动区域。参会成员默认收起为仅显示在线人数的横栏，点击后向下展开成员姓名、角色、在线状态和举手状态；聊天区随成员横栏展开或收起自然上下移动，并扩大消息列表、压缩消息输入框及隐藏实时字数。
 - 2026-08-04：完成会议文字聊天与举手互动。复用受保护的房间 WebSocket 接收客户端互动命令并广播服务端生成的消息与举手事件；聊天正文限制为 1 至 500 个字符，每个活动房间保留最近 100 条消息，新连接会收到聊天历史与举手快照，成员离会时自动清除举手状态。会议页新增聊天面板、实时连接状态、举手/放下手按钮和成员举手标记，游客不能发送互动命令。OpenAPI、Zod 契约、Rust 单元测试和 Playwright 房间回归已同步补充。
+- 2026-08-04：修复房间页刷新被误判为离会的问题。刷新不再发送离会请求或清除当前标签页的成员会话，重新加载后仍可使用媒体控制；远端音频轨道稍后到达或解除静音时会再次请求播放，降低后加入成员偶发无声的问题。
+- 2026-08-04：修复离开会议误关闭房间的问题。成员离开仅写入 `left_at`，暂时无人时房间继续保留；查询原房间页面或用会议号加入均可恢复进入。历史上已写入 `closed_at` 的本机房间也不再被查询排除。后端 19 项单元测试通过，覆盖全员离开后的再次加入。
+- 2026-08-04：修复多人会议后加入成员的远端媒体订阅与声音播放。WHEP 协商进行中会去重，避免成员实时媒体事件触发重复订阅；远端视频固定静音播放，声音改由独立 `<audio>` 元素播放，浏览器拦截自动播放时可点击画面右上角按钮授权。加入会议页和后端同时支持输入 `123456789`，自动规范为 `123-456-789`。前端 lint、生产构建和 15 项房间/媒体 Playwright 测试，以及后端 19 项单元测试通过。
 - 2026-08-04：修复 SQLx 迁移校验和对 Windows 换行符敏感的问题。新增 `.gitattributes` 固定迁移文件的历史换行符约定；本机 `sqlx migrate run` 已通过，API `/ready` 返回 200。
 - 2026-08-04：会议号改为独立的 `xxx-xxx-xxx` 九位数字格式。后端保留 UUID 作为内部鉴权、媒体和录制关联 ID；创建响应及会议页展示短会议号，加入页通过短会议号加入并在成功后保存内部 ID。新增数据库迁移、OpenAPI 契约、Rust 单元测试和前端端到端覆盖。
 - 验证：`cargo fmt --check`、`cargo test --lib`（19 项通过）和 `cargo clippy --lib -- -D warnings` 通过；前端 `npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 以及 `npm run test:e2e --prefix apps/web -- room-pages.spec.ts meeting-media.spec.ts` 通过（14 项）。完整 `cargo test` / `cargo test --test storage` 因正在运行的 API 锁定 `target/debug/api.exe` 无法链接，未停止服务以避免影响当前运行环境。
@@ -79,8 +83,8 @@
 
 - 2026-08-04：新增 `send_chat_message` 与 `set_hand_raised` WebSocket 命令，以及 `chat_message_sent`、`hand_raise_changed`、`command_rejected` 事件；修改 `docs/openapi.yaml`、`services/api/src/http/events.rs`、`apps/web/src/schemas/room.ts`、`apps/web/src/features/rooms/api/roomEvents.ts`、`apps/web/src/features/rooms/pages/RoomPage.tsx`、`apps/web/src/features/rooms/components/RoomInteractionPanel.tsx`、`apps/web/tests/e2e/room-pages.spec.ts` 和 `docs/ARCHITECTURE.md`。前端 lint 与生产构建通过；房间 Playwright 原有 12 项及新增互动用例均通过。Rust 格式检查通过，Rust 编译测试因当前命令环境缺少 MSVC `link.exe` 未执行完成。
 
-- 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；最后一名有效成员退出后写入房间 `closed_at`，查询和加入均不再返回已关闭房间。加入与退出使用 PostgreSQL 房间行锁串行化，避免并发退出遗漏空房关闭或关闭过程中仍加入新成员。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
-- 2026-08-04：房间页在站内导航、浏览器前进后退、刷新和关闭标签页时自动发送幂等 keepalive 退出请求并清理成员会话；显式离开按钮继续等待服务端成功响应，失败时允许用户重试。
+- 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；会议不会因暂时无人而自动关闭，因此返回首页、刷新或关闭标签页后，仍可用原会议号再次加入。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
+- 2026-08-04：房间页在站内导航、浏览器前进后退时自动发送幂等 keepalive 退出请求并清理成员会话；刷新会保留成员会话，显式离开按钮继续等待服务端成功响应，失败时允许用户重试。
 - 验证结果：Rust 格式检查和 `git diff --check` 通过；完整 `cargo check` 因本机缺少 MSVC `link.exe` 未执行完成，真实 PostgreSQL/Redis 集成测试需在迁移后运行。
 
 - 2026-08-03：补强会议页首次设备选择。新增显式“识别设备名称”操作：用户授权后临时媒体轨道会立即释放，再刷新真实摄像头与麦克风名称，随后可选择设备并启动；不会发布识别过程中的临时流。前端 lint、生产构建和 17 项 Playwright 测试通过。

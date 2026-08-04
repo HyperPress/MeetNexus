@@ -345,6 +345,41 @@ test.describe('MeetNexus 房间入口页面', () => {
       .toBeNull()
   })
 
+  test('刷新房间页面时保留成员会话且不发送离会请求', async ({ page }) => {
+    await mockRoomApi(page)
+    await page.goto('/#/create')
+
+    await page.getByLabel('会议主题').fill('刷新保留会话测试')
+    await page.getByLabel('你的显示名称').fill('测试主持人')
+    await page.getByRole('button', { name: '创建会议' }).click()
+    await expect(page).toHaveURL(new RegExp(`#\\/rooms\\/${roomId}$`))
+
+    let leaveRequestCount = 0
+    page.on('request', (request) => {
+      if (
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname ===
+          `/rooms/${roomId}/members/${hostId}`
+      ) {
+        leaveRequestCount += 1
+      }
+    })
+
+    await page.reload()
+
+    await expect(
+      page.getByRole('button', { name: '启动音视频设备' }),
+    ).toBeEnabled()
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          sessionStorage.getItem('meetnexus.room-session'),
+        ),
+      )
+      .not.toBeNull()
+    expect(leaveRequestCount).toBe(0)
+  })
+
   test('加入会议时校验会议号格式', async ({ page }) => {
     await page.goto('/#/join')
     await page.getByLabel('会议号').fill('ROOM-2026')
@@ -386,6 +421,27 @@ test.describe('MeetNexus 房间入口页面', () => {
         name: 'MeetNexus 项目例会',
       }),
     ).toBeVisible()
+  })
+
+  test('加入会议时自动补全九位会议号的横杠', async ({ page }) => {
+    await mockRoomApi(page)
+    await page.goto('/#/join')
+
+    const joinRequest = page.waitForRequest((request) => {
+      return (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/rooms/join' &&
+        request.postDataJSON().meeting_code === meetingCode
+      )
+    })
+
+    await page.getByLabel('会议号').fill('123456789')
+    await expect(page.getByLabel('会议号')).toHaveValue(meetingCode)
+    await page.getByLabel('你的显示名称').fill('测试参会者')
+    await page.getByRole('button', { name: '加入会议' }).click()
+
+    await joinRequest
+    await expect(page).toHaveURL(new RegExp(`#\\/rooms\\/${roomId}$`))
   })
 
   test('直接访问房间页面时加载真实成员列表', async ({

@@ -74,6 +74,8 @@ async fn main() {
         rooms: state.rooms.clone(),
         session_tokens: state.session_tokens.clone(),
         event_hub: state.event_hub.clone(),
+        turn_urls: config.turn_urls.clone(),
+        turn_shared_secret: config.turn_shared_secret.clone(),
     };
     let recordings_state = api::http::recordings::RecordingApiState {
         live777: live777.clone(),

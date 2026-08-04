@@ -16,6 +16,8 @@ pub struct AppConfig {
     pub redis_url: String,
     pub live777_url: String,
     pub live777_token: Option<String>,
+    pub turn_urls: Vec<String>,
+    pub turn_shared_secret: Option<String>,
     pub auth_jwt_secret: String,
     pub recording_storage_root: PathBuf,
     pub rust_log: String,
@@ -85,6 +87,38 @@ impl AppConfig {
         validate_live777_url(&live777_url)?;
 
         let live777_token = lookup("LIVE777_TOKEN").filter(|value| !value.trim().is_empty());
+        let turn_urls = lookup("TURN_URLS")
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if turn_urls
+            .iter()
+            .any(|url| !url.starts_with("turn:") && !url.starts_with("turns:"))
+        {
+            return Err(ConfigError::Invalid {
+                name: "TURN_URLS",
+                reason: "每个地址必须以 turn: 或 turns: 开头",
+            });
+        }
+        let turn_shared_secret =
+            lookup("TURN_SHARED_SECRET").filter(|value| !value.trim().is_empty());
+        if !turn_urls.is_empty() && turn_shared_secret.is_none() {
+            return Err(ConfigError::Missing {
+                name: "TURN_SHARED_SECRET",
+            });
+        }
+        if turn_urls.is_empty() && turn_shared_secret.is_some() {
+            return Err(ConfigError::Invalid {
+                name: "TURN_SHARED_SECRET",
+                reason: "配置 TURN_SHARED_SECRET 时必须同时配置 TURN_URLS",
+            });
+        }
         let auth_jwt_secret = required(&lookup, "AUTH_JWT_SECRET")?;
         if auth_jwt_secret.len() < 32 {
             return Err(ConfigError::Invalid {
@@ -106,6 +140,8 @@ impl AppConfig {
             redis_url,
             live777_url,
             live777_token,
+            turn_urls,
+            turn_shared_secret,
             auth_jwt_secret,
             recording_storage_root,
             rust_log,
@@ -169,6 +205,8 @@ mod tests {
 
         assert_eq!(config.server_addr.to_string(), "127.0.0.1:9090");
         assert_eq!(config.live777_token.as_deref(), Some("local-token"));
+        assert!(config.turn_urls.is_empty());
+        assert!(config.turn_shared_secret.is_none());
         assert_eq!(
             config.recording_storage_root,
             PathBuf::from(DEFAULT_RECORDING_STORAGE_ROOT)
@@ -283,5 +321,35 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn loads_turn_configuration_only_when_both_values_are_present() {
+        let config = AppConfig::from_values(VALID_VALUES.into_iter().chain([
+            (
+                "TURN_URLS",
+                "turn:turn.example.test:3478?transport=udp,turn:turn.example.test:3478?transport=tcp",
+            ),
+            ("TURN_SHARED_SECRET", "turn-shared-secret"),
+        ]))
+        .expect("TURN 配置完整时应当加载成功");
+
+        assert_eq!(config.turn_urls.len(), 2);
+        assert_eq!(
+            config.turn_shared_secret.as_deref(),
+            Some("turn-shared-secret")
+        );
+
+        let missing_secret = AppConfig::from_values(
+            VALID_VALUES
+                .into_iter()
+                .chain([("TURN_URLS", "turn:turn.example.test:3478")]),
+        );
+        assert_eq!(
+            missing_secret.err(),
+            Some(ConfigError::Missing {
+                name: "TURN_SHARED_SECRET"
+            })
+        );
     }
 }

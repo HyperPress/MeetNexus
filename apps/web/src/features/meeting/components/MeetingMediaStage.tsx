@@ -11,10 +11,10 @@ interface MeetingMediaStageProps {
     microphoneEnabled: boolean
   }) => void
   remoteMembers: Array<{
-    cameraEnabled: boolean
+    cameraEnabled?: boolean
     displayName: string
     id: string
-    microphoneEnabled: boolean
+    microphoneEnabled?: boolean
   }>
   remoteScreenMemberIds: string[]
   roomId: string

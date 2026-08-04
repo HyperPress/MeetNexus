@@ -412,11 +412,11 @@ export function RoomPage({ roomId }: RoomPageProps) {
               )
               .map((member) => ({
                 cameraEnabled:
-                  memberMediaStates[member.id]?.cameraEnabled ?? false,
+                  memberMediaStates[member.id]?.cameraEnabled,
                 id: member.id,
                 displayName: member.display_name,
                 microphoneEnabled:
-                  memberMediaStates[member.id]?.microphoneEnabled ?? false,
+                  memberMediaStates[member.id]?.microphoneEnabled,
               }))}
             remoteScreenMemberIds={screenShareMemberIds.filter(
               (memberId) => memberId !== currentSession?.memberId,

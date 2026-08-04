@@ -58,6 +58,7 @@ export function useMeetingLocalMedia({
   const screenSubscriptionsRef = useRef(new Map<string, SubscriptionSession>())
   const pendingSubscriptionsRef = useRef(new Set<string>())
   const pendingScreenSubscriptionsRef = useRef(new Set<string>())
+  const subscriptionRetryTimersRef = useRef(new Map<string, number>())
   const desiredRemoteMemberIdsRef = useRef(new Set<string>())
   const desiredRemoteScreenMemberIdsRef = useRef(new Set<string>())
 
@@ -104,6 +105,23 @@ export function useMeetingLocalMedia({
     },
     [onMediaStateChange],
   )
+
+  const scheduleSubscriptionRetry = useCallback((memberId: string) => {
+    if (subscriptionRetryTimersRef.current.has(memberId)) {
+      return
+    }
+
+    const timerId = window.setTimeout(() => {
+      subscriptionRetryTimersRef.current.delete(memberId)
+      if (
+        mountedRef.current &&
+        desiredRemoteMemberIdsRef.current.has(memberId)
+      ) {
+        setSubscriptionRetryVersion((version) => version + 1)
+      }
+    }, 1_000)
+    subscriptionRetryTimersRef.current.set(memberId, timerId)
+  }, [])
 
   const refreshDevices = useCallback(async () => {
     setIsRefreshingDevices(true)
@@ -253,6 +271,7 @@ export function useMeetingLocalMedia({
     const screenSubscriptions = screenSubscriptionsRef.current
     const pendingSubscriptions = pendingSubscriptionsRef.current
     const pendingScreenSubscriptions = pendingScreenSubscriptionsRef.current
+    const subscriptionRetryTimers = subscriptionRetryTimersRef.current
     const desiredRemoteMemberIds = desiredRemoteMemberIdsRef.current
     const desiredRemoteScreenMemberIds =
       desiredRemoteScreenMemberIdsRef.current
@@ -277,6 +296,10 @@ export function useMeetingLocalMedia({
       subscriptions.clear()
       pendingSubscriptions.clear()
       desiredRemoteMemberIds.clear()
+      for (const timerId of subscriptionRetryTimers.values()) {
+        window.clearTimeout(timerId)
+      }
+      subscriptionRetryTimers.clear()
       for (const session of screenSubscriptions.values()) {
         void session.close()
       }
@@ -422,19 +445,46 @@ export function useMeetingLocalMedia({
             ...currentStreams,
             [remoteMemberId]: session.stream,
           }))
+          let disconnectTimer: number | null = null
+          const retrySubscription = () => {
+            if (disconnectTimer !== null) {
+              window.clearTimeout(disconnectTimer)
+              disconnectTimer = null
+            }
+            if (subscriptionsRef.current.get(remoteMemberId) !== session) {
+              return
+            }
+            subscriptionsRef.current.delete(remoteMemberId)
+            void session.close()
+            setRemoteStreams((currentStreams) => {
+              const { [remoteMemberId]: _, ...remainingStreams } = currentStreams
+              return remainingStreams
+            })
+            scheduleSubscriptionRetry(remoteMemberId)
+          }
+          session.connection.addEventListener('connectionstatechange', () => {
+            if (!mountedRef.current) {
+              return
+            }
+            if (session.connection.connectionState === 'failed') {
+              retrySubscription()
+            }
+            if (session.connection.connectionState === 'disconnected') {
+              disconnectTimer = window.setTimeout(retrySubscription, 3_000)
+            }
+            if (session.connection.connectionState === 'connected') {
+              if (disconnectTimer !== null) {
+                window.clearTimeout(disconnectTimer)
+                disconnectTimer = null
+              }
+            }
+          })
         })
         .catch((error: unknown) => {
           pendingSubscriptionsRef.current.delete(remoteMemberId)
           if (mountedRef.current) {
             setMediaErrorMessage(getMeetingMediaErrorMessage(error))
-            window.setTimeout(() => {
-              if (
-                mountedRef.current &&
-                desiredRemoteMemberIdsRef.current.has(remoteMemberId)
-              ) {
-                setSubscriptionRetryVersion((version) => version + 1)
-              }
-            }, 1_000)
+            scheduleSubscriptionRetry(remoteMemberId)
           }
         })
     }
@@ -442,6 +492,7 @@ export function useMeetingLocalMedia({
     memberId,
     remoteMemberIds,
     roomId,
+    scheduleSubscriptionRetry,
     sessionToken,
     subscriptionRetryVersion,
   ])

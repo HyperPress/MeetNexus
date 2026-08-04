@@ -165,7 +165,7 @@ test.describe('MeetNexus 房间入口页面', () => {
       page.getByRole('heading', {
         level: 1,
       }),
-    ).toContainText('先检查设备')
+    ).toContainText('让每一次连接，都更清晰高效')
 
     const mainContent = page.getByRole('main')
 

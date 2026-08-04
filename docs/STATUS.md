@@ -2,6 +2,8 @@
 
 ## 最新完成
 
+- 2026-08-04：重新设计会议页右侧互动区域。参会成员默认收起为仅显示在线人数的横栏，点击后向下展开成员姓名、角色、在线状态和举手状态；聊天区随成员横栏展开或收起自然上下移动，并扩大消息列表、压缩消息输入框及隐藏实时字数。
+- 2026-08-04：完成会议文字聊天与举手互动。复用受保护的房间 WebSocket 接收客户端互动命令并广播服务端生成的消息与举手事件；聊天正文限制为 1 至 500 个字符，每个活动房间保留最近 100 条消息，新连接会收到聊天历史与举手快照，成员离会时自动清除举手状态。会议页新增聊天面板、实时连接状态、举手/放下手按钮和成员举手标记，游客不能发送互动命令。OpenAPI、Zod 契约、Rust 单元测试和 Playwright 房间回归已同步补充。
 - 2026-08-04：修复 SQLx 迁移校验和对 Windows 换行符敏感的问题。新增 `.gitattributes` 固定迁移文件的历史换行符约定；本机 `sqlx migrate run` 已通过，API `/ready` 返回 200。
 - 2026-08-04：会议号改为独立的 `xxx-xxx-xxx` 九位数字格式。后端保留 UUID 作为内部鉴权、媒体和录制关联 ID；创建响应及会议页展示短会议号，加入页通过短会议号加入并在成功后保存内部 ID。新增数据库迁移、OpenAPI 契约、Rust 单元测试和前端端到端覆盖。
 - 验证：`cargo fmt --check`、`cargo test --lib`（19 项通过）和 `cargo clippy --lib -- -D warnings` 通过；前端 `npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 以及 `npm run test:e2e --prefix apps/web -- room-pages.spec.ts meeting-media.spec.ts` 通过（14 项）。完整 `cargo test` / `cargo test --test storage` 因正在运行的 API 锁定 `target/debug/api.exe` 无法链接，未停止服务以避免影响当前运行环境。
@@ -72,6 +74,10 @@
 - 2026-07-31：会议房间界面与本地媒体控制修改通过前端 Oxlint、TypeScript/Vite 生产构建和 14 项 Playwright 端到端测试；自动化媒体测试使用隔离的 Chromium 测试设备，真实摄像头、麦克风与系统屏幕选择器仍需手动验证。当前媒体能力仅限本机预览，尚未接入 WHIP/WHEP。
 
 ## 最近变更
+
+- 2026-08-04：新增 `apps/web/src/features/rooms/components/RoomMemberDisclosure.tsx`，修改真实房间页、聊天面板及对应 Playwright 用例。成员列表改为默认收起的在线人数横栏，聊天消息区扩大至可用空间，输入区改为单行紧凑布局且不再显示实时字数。
+
+- 2026-08-04：新增 `send_chat_message` 与 `set_hand_raised` WebSocket 命令，以及 `chat_message_sent`、`hand_raise_changed`、`command_rejected` 事件；修改 `docs/openapi.yaml`、`services/api/src/http/events.rs`、`apps/web/src/schemas/room.ts`、`apps/web/src/features/rooms/api/roomEvents.ts`、`apps/web/src/features/rooms/pages/RoomPage.tsx`、`apps/web/src/features/rooms/components/RoomInteractionPanel.tsx`、`apps/web/tests/e2e/room-pages.spec.ts` 和 `docs/ARCHITECTURE.md`。前端 lint 与生产构建通过；房间 Playwright 原有 12 项及新增互动用例均通过。Rust 格式检查通过，Rust 编译测试因当前命令环境缺少 MSVC `link.exe` 未执行完成。
 
 - 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；最后一名有效成员退出后写入房间 `closed_at`，查询和加入均不再返回已关闭房间。加入与退出使用 PostgreSQL 房间行锁串行化，避免并发退出遗漏空房关闭或关闭过程中仍加入新成员。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
 - 2026-08-04：房间页在站内导航、浏览器前进后退、刷新和关闭标签页时自动发送幂等 keepalive 退出请求并清理成员会话；显式离开按钮继续等待服务端成功响应，失败时允许用户重试。

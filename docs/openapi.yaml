@@ -193,7 +193,7 @@ paths:
     get:
       operationId: subscribeRoomEvents
       summary: 订阅会议实时事件
-      description: 通过 WebSocket 接收成员、主媒体和屏幕共享事件。连接建立后会先下发当前正在发布主媒体或屏幕共享的成员快照，避免错过已开始的媒体。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
+      description: 通过 WebSocket 接收成员、主媒体、屏幕共享、文字聊天和举手事件，并发送 `RoomCommand`。连接建立后会先下发当前媒体发布者、最近 100 条聊天消息和举手成员快照。聊天与举手是房间临时状态，房间关闭或 API 重启后清空。客户端必须以 `meetnexus.<JWT>` 形式在 `Sec-WebSocket-Protocol` 中提供房间成员令牌，令牌不会出现在 URL、查询参数或应用日志中。
       tags:
         - 房间
       security:
@@ -1022,7 +1022,95 @@ components:
         - $ref: "#/components/schemas/RoomMediaStoppedEvent"
         - $ref: "#/components/schemas/RoomScreenShareStartedEvent"
         - $ref: "#/components/schemas/RoomScreenShareStoppedEvent"
+        - $ref: "#/components/schemas/RoomChatMessageSentEvent"
+        - $ref: "#/components/schemas/RoomHandRaiseChangedEvent"
+        - $ref: "#/components/schemas/RoomCommandRejectedEvent"
         - $ref: "#/components/schemas/RoomResyncRequiredEvent"
+    RoomCommand:
+      oneOf:
+        - $ref: "#/components/schemas/SendRoomChatMessageCommand"
+        - $ref: "#/components/schemas/SetRoomHandRaisedCommand"
+    SendRoomChatMessageCommand:
+      type: object
+      additionalProperties: false
+      required: [command, content]
+      properties:
+        command:
+          type: string
+          enum: [send_chat_message]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 去除首尾空白后的聊天正文。
+    SetRoomHandRaisedCommand:
+      type: object
+      additionalProperties: false
+      required: [command, raised]
+      properties:
+        command:
+          type: string
+          enum: [set_hand_raised]
+        raised:
+          type: boolean
+    RoomChatMessage:
+      type: object
+      additionalProperties: false
+      required: [id, member_id, display_name, content, sent_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        member_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        content:
+          type: string
+          minLength: 1
+          maxLength: 500
+        sent_at:
+          type: string
+          format: date-time
+    RoomChatMessageSentEvent:
+      type: object
+      additionalProperties: false
+      required: [event, message]
+      properties:
+        event:
+          type: string
+          enum: [chat_message_sent]
+        message:
+          $ref: "#/components/schemas/RoomChatMessage"
+    RoomHandRaiseChangedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, member_id, display_name, raised]
+      properties:
+        event:
+          type: string
+          enum: [hand_raise_changed]
+        member_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        raised:
+          type: boolean
+    RoomCommandRejectedEvent:
+      type: object
+      additionalProperties: false
+      required: [event, code, message]
+      properties:
+        event:
+          type: string
+          enum: [command_rejected]
+        code:
+          type: string
+          enum: [INTERACTION_COMMAND_INVALID, CHAT_MESSAGE_INVALID]
+        message:
+          type: string
     RoomMemberJoinedEvent:
       type: object
       additionalProperties: false

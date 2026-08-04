@@ -72,6 +72,14 @@ export const JoinRoomResponseSchema = z.strictObject({
   session_token: SessionTokenSchema,
 })
 
+export const RoomChatMessageSchema = z.strictObject({
+  id: UuidSchema,
+  member_id: UuidSchema,
+  display_name: z.string(),
+  content: z.string().min(1).max(500),
+  sent_at: DateTimeSchema,
+})
+
 export const RoomEventSchema = z.discriminatedUnion('event', [
   z.strictObject({
     event: z.literal('member_joined'),
@@ -96,6 +104,24 @@ export const RoomEventSchema = z.discriminatedUnion('event', [
   z.strictObject({
     event: z.literal('screen_share_stopped'),
     member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('chat_message_sent'),
+    message: RoomChatMessageSchema,
+  }),
+  z.strictObject({
+    event: z.literal('hand_raise_changed'),
+    member_id: UuidSchema,
+    display_name: z.string(),
+    raised: z.boolean(),
+  }),
+  z.strictObject({
+    event: z.literal('command_rejected'),
+    code: z.enum([
+      'INTERACTION_COMMAND_INVALID',
+      'CHAT_MESSAGE_INVALID',
+    ]),
+    message: z.string(),
   }),
   z.strictObject({
     event: z.literal('resync_required'),
@@ -155,6 +181,7 @@ export type CreateRoomResponse = z.infer<
 export type JoinRoomResponse = z.infer<
   typeof JoinRoomResponseSchema
 >
+export type RoomChatMessage = z.infer<typeof RoomChatMessageSchema>
 export type RoomEvent = z.infer<typeof RoomEventSchema>
 export type RecordingState = z.infer<typeof RecordingStateSchema>
 export type Recording = z.infer<typeof RecordingSchema>

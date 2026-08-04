@@ -51,6 +51,10 @@ export function useMeetingLocalMedia({
   const screenStreamRef = useRef<MediaStream | null>(null)
   const subscriptionsRef = useRef(new Map<string, SubscriptionSession>())
   const screenSubscriptionsRef = useRef(new Map<string, SubscriptionSession>())
+  const pendingSubscriptionsRef = useRef(new Set<string>())
+  const pendingScreenSubscriptionsRef = useRef(new Set<string>())
+  const desiredRemoteMemberIdsRef = useRef(new Set<string>())
+  const desiredRemoteScreenMemberIdsRef = useRef(new Set<string>())
 
   const [localStream, setLocalStream] =
     useState<MediaStream | null>(null)
@@ -228,6 +232,11 @@ export function useMeetingLocalMedia({
     mountedRef.current = true
     const subscriptions = subscriptionsRef.current
     const screenSubscriptions = screenSubscriptionsRef.current
+    const pendingSubscriptions = pendingSubscriptionsRef.current
+    const pendingScreenSubscriptions = pendingScreenSubscriptionsRef.current
+    const desiredRemoteMemberIds = desiredRemoteMemberIdsRef.current
+    const desiredRemoteScreenMemberIds =
+      desiredRemoteScreenMemberIdsRef.current
 
     return () => {
       mountedRef.current = false
@@ -247,10 +256,14 @@ export function useMeetingLocalMedia({
         void session.close()
       }
       subscriptions.clear()
+      pendingSubscriptions.clear()
+      desiredRemoteMemberIds.clear()
       for (const session of screenSubscriptions.values()) {
         void session.close()
       }
       screenSubscriptions.clear()
+      pendingScreenSubscriptions.clear()
+      desiredRemoteScreenMemberIds.clear()
       stopLocalMedia(currentLocalStream)
       stopLocalMedia(currentScreenStream)
     }
@@ -343,12 +356,14 @@ export function useMeetingLocalMedia({
       sessionToken === null ||
       localStreamRef.current === null
     ) {
+      desiredRemoteMemberIdsRef.current.clear()
       return
     }
 
     const desiredMemberIds = new Set(
       remoteMemberIds.filter((remoteMemberId) => remoteMemberId !== memberId),
     )
+    desiredRemoteMemberIdsRef.current = desiredMemberIds
     for (const [remoteMemberId, session] of subscriptionsRef.current) {
       if (!desiredMemberIds.has(remoteMemberId)) {
         subscriptionsRef.current.delete(remoteMemberId)
@@ -364,6 +379,11 @@ export function useMeetingLocalMedia({
       if (subscriptionsRef.current.has(remoteMemberId)) {
         continue
       }
+      if (pendingSubscriptionsRef.current.has(remoteMemberId)) {
+        continue
+      }
+
+      pendingSubscriptionsRef.current.add(remoteMemberId)
       void subscribeWhep({
         roomId,
         memberId,
@@ -371,7 +391,12 @@ export function useMeetingLocalMedia({
         sessionToken,
       })
         .then((session) => {
-          if (!mountedRef.current || !desiredMemberIds.has(remoteMemberId)) {
+          pendingSubscriptionsRef.current.delete(remoteMemberId)
+          if (
+            !mountedRef.current ||
+            !desiredRemoteMemberIdsRef.current.has(remoteMemberId) ||
+            subscriptionsRef.current.has(remoteMemberId)
+          ) {
             void session.close()
             return
           }
@@ -382,6 +407,7 @@ export function useMeetingLocalMedia({
           }))
         })
         .catch((error: unknown) => {
+          pendingSubscriptionsRef.current.delete(remoteMemberId)
           if (mountedRef.current) {
             setMediaErrorMessage(getMeetingMediaErrorMessage(error))
           }
@@ -391,12 +417,14 @@ export function useMeetingLocalMedia({
 
   useEffect(() => {
     if (memberId === null || sessionToken === null) {
+      desiredRemoteScreenMemberIdsRef.current.clear()
       return
     }
 
     const desiredMemberIds = new Set(
       remoteScreenMemberIds.filter((remoteMemberId) => remoteMemberId !== memberId),
     )
+    desiredRemoteScreenMemberIdsRef.current = desiredMemberIds
     for (const [remoteMemberId, session] of screenSubscriptionsRef.current) {
       if (!desiredMemberIds.has(remoteMemberId)) {
         screenSubscriptionsRef.current.delete(remoteMemberId)
@@ -411,6 +439,11 @@ export function useMeetingLocalMedia({
       if (screenSubscriptionsRef.current.has(remoteMemberId)) {
         continue
       }
+      if (pendingScreenSubscriptionsRef.current.has(remoteMemberId)) {
+        continue
+      }
+
+      pendingScreenSubscriptionsRef.current.add(remoteMemberId)
       void subscribeWhep({
         roomId,
         memberId,
@@ -419,7 +452,12 @@ export function useMeetingLocalMedia({
         streamMemberId: remoteMemberId,
       })
         .then((session) => {
-          if (!mountedRef.current || !desiredMemberIds.has(remoteMemberId)) {
+          pendingScreenSubscriptionsRef.current.delete(remoteMemberId)
+          if (
+            !mountedRef.current ||
+            !desiredRemoteScreenMemberIdsRef.current.has(remoteMemberId) ||
+            screenSubscriptionsRef.current.has(remoteMemberId)
+          ) {
             void session.close()
             return
           }
@@ -430,6 +468,7 @@ export function useMeetingLocalMedia({
           }))
         })
         .catch((error: unknown) => {
+          pendingScreenSubscriptionsRef.current.delete(remoteMemberId)
           if (mountedRef.current) {
             setScreenErrorMessage(getMeetingMediaErrorMessage(error))
           }

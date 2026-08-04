@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MeetingRoomDemoPage } from '../features/meeting/pages/MeetingRoomDemoPage'
 import { PreJoinPage } from '../features/meeting/pages/PreJoinPage'
 import { CreateRoomPage } from '../features/rooms/pages/CreateRoomPage'
 import { HomePage } from '../features/rooms/pages/HomePage'
@@ -11,6 +12,7 @@ type Route =
   | { name: 'create' }
   | { name: 'join' }
   | { name: 'preview' }
+  | { name: 'demoRoom' }
   | { name: 'room'; roomId: string }
   | { name: 'notFound' }
 
@@ -31,6 +33,10 @@ function readRoute(): Route {
 
   if (path === 'preview') {
     return { name: 'preview' }
+  }
+
+  if (path === 'demo-room') {
+    return { name: 'demoRoom' }
   }
 
   const roomMatch = /^rooms\/([^/]+)$/.exec(path)
@@ -98,6 +104,10 @@ export function AppRouter() {
 
   if (route.name === 'preview') {
     page = <PreJoinPage />
+  }
+
+  if (route.name === 'demoRoom') {
+    page = <MeetingRoomDemoPage />
   }
 
   if (route.name === 'room') {

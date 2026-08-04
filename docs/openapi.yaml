@@ -122,6 +122,7 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     delete:
       operationId: leaveRoom
+      description: 幂等地退出会议；重复请求仍返回 204。最后一名有效成员退出后，会议立即关闭。
       security:
         - BearerAuth: []
       summary: 离开会议
@@ -136,8 +137,6 @@ paths:
           $ref: "#/components/responses/SessionAuthenticationRequired"
         "403":
           $ref: "#/components/responses/RoomMemberAccessDenied"
-        "404":
-          $ref: "#/components/responses/MemberNotFound"
   /rooms/{room_id}/members/{member_id}/heartbeat:
     parameters:
       - $ref: "#/components/parameters/RoomId"

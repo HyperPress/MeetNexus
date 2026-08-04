@@ -55,6 +55,16 @@ impl RoomEventHub {
     pub fn publish(&self, room_id: Uuid, event: RoomEvent) {
         let sender = {
             let mut rooms = self.rooms.lock().expect("房间事件锁不应被毒化");
+            let closes_existing_state = matches!(
+                &event,
+                RoomEvent::MemberLeft { .. }
+                    | RoomEvent::MediaStopped { .. }
+                    | RoomEvent::ScreenShareStopped { .. }
+                    | RoomEvent::ResyncRequired
+            );
+            if closes_existing_state && !rooms.contains_key(&room_id) {
+                return;
+            }
             let room = rooms.entry(room_id).or_insert_with(new_room_event_state);
             match &event {
                 RoomEvent::MediaStarted { member_id } => {
@@ -69,9 +79,11 @@ impl RoomEventHub {
                 RoomEvent::ScreenShareStopped { member_id } => {
                     room.active_screen_member_ids.remove(member_id);
                 }
-                RoomEvent::MemberJoined { .. }
-                | RoomEvent::MemberLeft { .. }
-                | RoomEvent::ResyncRequired => {}
+                RoomEvent::MemberLeft { member_id } => {
+                    room.active_media_member_ids.remove(member_id);
+                    room.active_screen_member_ids.remove(member_id);
+                }
+                RoomEvent::MemberJoined { .. } | RoomEvent::ResyncRequired => {}
             }
             room.sender.clone()
         };
@@ -88,6 +100,13 @@ impl RoomEventHub {
                 active_screen_member_ids: room.active_screen_member_ids.iter().copied().collect(),
             },
         )
+    }
+
+    pub fn close_room(&self, room_id: Uuid) {
+        self.rooms
+            .lock()
+            .expect("房间事件锁不应被毒化")
+            .remove(&room_id);
     }
 }
 
@@ -291,5 +310,29 @@ mod tests {
         );
         let (_, snapshot) = hub.subscribe(room_id);
         assert!(snapshot.active_media_member_ids.is_empty());
+    }
+
+    #[test]
+    fn removes_departed_member_state_and_does_not_reopen_closed_room() {
+        let hub = RoomEventHub::default();
+        let room_id = Uuid::new_v4();
+        let member_id = Uuid::new_v4();
+
+        hub.publish(room_id, RoomEvent::MediaStarted { member_id });
+        hub.publish(room_id, RoomEvent::ScreenShareStarted { member_id });
+        hub.publish(room_id, RoomEvent::MemberLeft { member_id });
+
+        let (_, snapshot) = hub.subscribe(room_id);
+        assert!(snapshot.active_media_member_ids.is_empty());
+        assert!(snapshot.active_screen_member_ids.is_empty());
+
+        hub.close_room(room_id);
+        hub.publish(room_id, RoomEvent::MediaStopped { member_id });
+        assert!(
+            !hub.rooms
+                .lock()
+                .expect("房间事件锁不应被毒化")
+                .contains_key(&room_id)
+        );
     }
 }

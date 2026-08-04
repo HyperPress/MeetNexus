@@ -176,19 +176,25 @@ async fn leave_room(
     let room_id = parse_id(&room_id, context.request_id())?;
     let member_id = parse_id(&member_id, context.request_id())?;
     authorize_session(&state, &headers, room_id, member_id, context.request_id())?;
-    service(&state)
+    let outcome = service(&state)
         .leave_room(room_id, member_id)
         .await
         .map_err(|error| map_error(error, context.request_id(), Some(room_id), Some(member_id)))?;
-    state
-        .event_hub
-        .publish(room_id, RoomEvent::MemberLeft { member_id });
+    if outcome.member_left {
+        state
+            .event_hub
+            .publish(room_id, RoomEvent::MemberLeft { member_id });
+    }
     log_room_event(
         context.request_id(),
         room_id,
         Some(member_id),
         "room_member_left",
     );
+    if outcome.room_closed {
+        log_room_event(context.request_id(), room_id, None, "room_closed_empty");
+        state.event_hub.close_room(room_id);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -77,10 +77,26 @@ async fn postgresql_and_redis_store_room_members_and_presence() {
         .mark_offline(room.id, member.id)
         .await
         .expect("应当能够移除在线状态");
-    rooms
-        .remove_member(room.id, member.id)
+    let outcome = rooms
+        .leave_member_and_close_empty_room(room.id, member.id, Utc::now())
         .await
-        .expect("应当能够移除成员");
+        .expect("应当能够退出成员并关闭空会议");
+    assert!(outcome.member_left);
+    assert!(outcome.room_closed);
+    assert!(
+        rooms
+            .find_room(room.id)
+            .await
+            .expect("应当能够查询已关闭会议")
+            .is_none()
+    );
+    assert!(
+        rooms
+            .list_members(room.id)
+            .await
+            .expect("应当能够查询已离会成员")
+            .is_empty()
+    );
     sqlx::query("DELETE FROM rooms WHERE id = $1")
         .bind(room.id)
         .execute(&pool)

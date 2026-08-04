@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
@@ -10,6 +11,7 @@ import { RecordingPanel } from '../components/RecordingPanel'
 import {
   getRoom,
   leaveRoom,
+  leaveRoomOnPageExit,
   refreshRoomMemberPresence,
 } from '../api/roomApi'
 import { connectRoomEvents } from '../api/roomEvents'
@@ -43,9 +45,24 @@ export function RoomPage({ roomId }: RoomPageProps) {
   >(null)
   const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
   const [mediaMemberIds, setMediaMemberIds] = useState<string[]>([])
+  const leaveStartedRef = useRef(false)
 
   const currentSession =
     roomSession?.roomId === roomId ? roomSession : null
+
+  const leaveWithoutWaiting = useCallback(() => {
+    if (currentSession === null || leaveStartedRef.current) {
+      return
+    }
+
+    leaveStartedRef.current = true
+    clearRoomSession()
+    leaveRoomOnPageExit(
+      currentSession.roomId,
+      currentSession.memberId,
+      currentSession.sessionToken,
+    )
+  }, [currentSession])
 
   const loadRoom = useCallback(async () => {
     setIsLoading(true)
@@ -164,6 +181,41 @@ export function RoomPage({ roomId }: RoomPageProps) {
     }
   }, [currentSession])
 
+  useEffect(() => {
+    if (currentSession === null) {
+      return
+    }
+
+    function handleRouteChange() {
+      if (window.location.hash !== `#/rooms/${roomId}`) {
+        leaveWithoutWaiting()
+      }
+    }
+
+    function handleNavigationClick(event: MouseEvent) {
+      if (!(event.target instanceof Element)) {
+        return
+      }
+
+      const link = event.target.closest<HTMLAnchorElement>('a[href^="#/"]')
+      if (link !== null && link.hash !== `#/rooms/${roomId}`) {
+        leaveWithoutWaiting()
+      }
+    }
+
+    document.addEventListener('click', handleNavigationClick, true)
+    window.addEventListener('hashchange', handleRouteChange)
+    window.addEventListener('popstate', handleRouteChange)
+    window.addEventListener('pagehide', leaveWithoutWaiting)
+
+    return () => {
+      document.removeEventListener('click', handleNavigationClick, true)
+      window.removeEventListener('hashchange', handleRouteChange)
+      window.removeEventListener('popstate', handleRouteChange)
+      window.removeEventListener('pagehide', leaveWithoutWaiting)
+    }
+  }, [currentSession, leaveWithoutWaiting, roomId])
+
   async function handleLeaveRoom() {
     if (currentSession === null || isLeaving) {
       return
@@ -171,6 +223,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
 
     setIsLeaving(true)
     setErrorMessage(null)
+    leaveStartedRef.current = true
 
     try {
       await leaveRoom(
@@ -182,6 +235,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
       clearRoomSession()
       window.location.hash = '#/'
     } catch (error) {
+      leaveStartedRef.current = false
       setErrorMessage(getApiErrorMessage(error))
       setIsLeaving(false)
     }
@@ -217,6 +271,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
               <button
                 className="btn btn-ghost"
                 onClick={() => {
+                  leaveWithoutWaiting()
                   window.location.hash = '#/join'
                 }}
                 type="button"

@@ -66,6 +66,23 @@ export function leaveRoom(
   })
 }
 
+export function leaveRoomOnPageExit(
+  roomId: string,
+  memberId: string,
+  sessionToken: string,
+): void {
+  void fetch(memberPath(roomId, memberId), {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    keepalive: true,
+    method: 'DELETE',
+  }).catch(() => {
+    // 页面已经离开，失败时只能交给服务端心跳超时机制兜底。
+  })
+}
+
 export function refreshRoomMemberPresence(
   roomId: string,
   memberId: string,

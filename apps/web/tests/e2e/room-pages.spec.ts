@@ -301,6 +301,36 @@ test.describe('MeetNexus 房间入口页面', () => {
     )
   })
 
+  test('离开会议页面时自动退出并清理成员会话', async ({ page }) => {
+    await mockRoomApi(page)
+    await page.goto('/#/create')
+
+    await page.getByLabel('会议主题').fill('自动退出测试')
+    await page.getByLabel('你的显示名称').fill('测试主持人')
+    await page.getByRole('button', { name: '创建会议' }).click()
+    await expect(page).toHaveURL(new RegExp(`#\\/rooms\\/${roomId}$`))
+
+    const leaveRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname ===
+          `/rooms/${roomId}/members/${hostId}`,
+    )
+
+    await page.getByRole('link', { name: '首页', exact: true }).click()
+
+    const leave = await leaveRequest
+    expect(leave.headers().authorization).toBe(`Bearer ${sessionToken}`)
+    await expect(page).toHaveURL(/#\/$/)
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          sessionStorage.getItem('meetnexus.room-session'),
+        ),
+      )
+      .toBeNull()
+  })
+
   test('加入会议时校验会议号格式', async ({ page }) => {
     await page.goto('/#/join')
     await page.getByLabel('会议号').fill('ROOM-2026')

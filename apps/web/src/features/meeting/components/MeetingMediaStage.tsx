@@ -1,6 +1,5 @@
 import { useMeetingLocalMedia } from '../hooks/useMeetingLocalMedia'
-import { LocalVideoPreview } from './LocalVideoPreview'
-import { RemoteVideoPreview } from './RemoteVideoPreview'
+import { MeetingMediaGrid } from './MeetingMediaGrid'
 import { ScreenSharePreview } from './ScreenSharePreview'
 
 interface MeetingMediaStageProps {
@@ -54,84 +53,17 @@ export function MeetingMediaStage({
           </div>
 
           <div className="mt-4">
-            <LocalVideoPreview
+            <MeetingMediaGrid
               cameraEnabled={media.cameraEnabled}
+              displayName={displayName}
+              localStream={media.localStream}
+              microphoneEnabled={media.microphoneEnabled}
               mirrored={media.cameraMirrored}
-              stream={media.localStream}
+              remoteMembers={remoteMembers}
+              remoteScreenStreams={media.remoteScreenStreams}
+              remoteStreams={media.remoteStreams}
+              screenStream={media.screenStream}
             />
-          </div>
-
-          {Object.entries(media.remoteStreams).length > 0 && (
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {remoteMembers.map((member) => {
-                const stream = media.remoteStreams[member.id]
-                return stream === undefined ? null : (
-                  <RemoteVideoPreview
-                    displayName={member.displayName}
-                    key={member.id}
-                    stream={stream}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {Object.entries(media.remoteScreenStreams).length > 0 && (
-            <section className="mt-4">
-              <h3 className="text-sm font-semibold">远端屏幕共享</h3>
-              <div className="mt-2 grid gap-4 md:grid-cols-2">
-                {remoteMembers.map((member) => {
-                  const stream = media.remoteScreenStreams[member.id]
-                  return stream === undefined ? null : (
-                    <RemoteVideoPreview
-                      displayName={`${member.displayName}的屏幕共享`}
-                      key={member.id}
-                      stream={stream}
-                    />
-                  )
-                })}
-              </div>
-            </section>
-          )}
-
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-box bg-black/30 px-4 py-3">
-            <div className="min-w-0">
-              <p className="truncate font-medium">
-                {displayName}
-              </p>
-
-              <p className="text-xs text-neutral-content/60">
-                {canControlMedia
-                  ? '当前成员（本机）'
-                  : '访客只读模式'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-2">
-              <span
-                className={
-                  media.microphoneEnabled
-                    ? 'badge badge-success'
-                    : 'badge badge-ghost'
-                }
-              >
-                {media.microphoneEnabled
-                  ? '麦克风开启'
-                  : '麦克风关闭'}
-              </span>
-
-              <span
-                className={
-                  media.cameraEnabled
-                    ? 'badge badge-success'
-                    : 'badge badge-ghost'
-                }
-              >
-                {media.cameraEnabled
-                  ? '摄像头开启'
-                  : '摄像头关闭'}
-              </span>
-            </div>
           </div>
         </div>
       </div>

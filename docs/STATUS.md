@@ -67,6 +67,10 @@
 
 ## 最近变更
 
+- 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；最后一名有效成员退出后写入房间 `closed_at`，查询和加入均不再返回已关闭房间。加入与退出使用 PostgreSQL 房间行锁串行化，避免并发退出遗漏空房关闭或关闭过程中仍加入新成员。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
+- 2026-08-04：房间页在站内导航、浏览器前进后退、刷新和关闭标签页时自动发送幂等 keepalive 退出请求并清理成员会话；显式离开按钮继续等待服务端成功响应，失败时允许用户重试。
+- 验证结果：Rust 格式检查和 `git diff --check` 通过；完整 `cargo check` 因本机缺少 MSVC `link.exe` 未执行完成，真实 PostgreSQL/Redis 集成测试需在迁移后运行。
+
 - 2026-08-03：补强会议页首次设备选择。新增显式“识别设备名称”操作：用户授权后临时媒体轨道会立即释放，再刷新真实摄像头与麦克风名称，随后可选择设备并启动；不会发布识别过程中的临时流。前端 lint、生产构建和 17 项 Playwright 测试通过。
 
 - 2026-08-03：修正会议页屏幕共享遗留文案。屏幕共享已通过独立的同源 WHIP/WHEP 媒体流发布给其他成员，页面不再错误提示“仅用于本地预览”。
@@ -113,3 +117,7 @@
 - 2026-07-31：会议房间页面接入浏览器本地摄像头、麦克风和屏幕分享控制，复用现有本地媒体适配层与预览组件；新增房间成员媒体操作权限限制和页面卸载资源清理。
 - 2026-07-28：补充 MIT License 和公开 README，完成岭创之夏阶段成果展示前的源码仓库准备与质量验证。
 - 2026-07-28：新增非敏感本机配置模板并补充使用说明；修改 `.env.example`、`docs/LOCAL_SETUP.md` 与 `docs/STATUS.md`。
+- 2026-08-03：完善会议室前端体验：新增响应式会议画面组件、音视频状态图标、摄像头关闭占位、宫格与主画面布局、屏幕共享自动主画面、全屏显示和紧凑画面信息标签；当前分支继续保持仅本地预览边界，未伪造或接入尚未合并的远端媒体数据。
+- 修改文件：`apps/web/src/app/AppRouter.tsx`、`apps/web/src/features/meeting/pages/MeetingRoomDemoPage.tsx`、`apps/web/src/features/meeting/components/MeetingMediaGrid.tsx`、`apps/web/src/features/meeting/components/MeetingMediaStage.tsx` 与 `docs/STATUS.md`。
+- 验证结果：`npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 和 `npm run test:e2e --prefix apps/web` 全部通过，共 14 项 Playwright 测试通过。
+- 遗留问题与下一步：远端成员音视频和屏幕共享需要等待媒体链路合并后，将真实 `remoteStreams`、`remoteScreenStreams` 与成员列表传入 `MeetingMediaGrid`；远端麦克风和摄像头的精确开关状态仍应由成员媒体状态事件提供。

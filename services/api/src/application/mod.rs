@@ -15,7 +15,6 @@ pub struct StorageError {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LeaveRoomOutcome {
     pub member_left: bool,
-    pub room_closed: bool,
 }
 
 #[allow(async_fn_in_trait)]
@@ -37,7 +36,7 @@ pub trait RoomRepository: Send + Sync {
         room_id: RoomId,
         member_id: MemberId,
     ) -> Result<bool, StorageError>;
-    async fn leave_member_and_close_empty_room(
+    async fn leave_member(
         &self,
         room_id: RoomId,
         member_id: MemberId,
@@ -99,15 +98,13 @@ impl<T: RoomRepository + ?Sized> RoomRepository for &T {
     ) -> Result<bool, StorageError> {
         (*self).member_exists(room_id, member_id).await
     }
-    async fn leave_member_and_close_empty_room(
+    async fn leave_member(
         &self,
         room_id: RoomId,
         member_id: MemberId,
         left_at: chrono::DateTime<Utc>,
     ) -> Result<LeaveRoomOutcome, StorageError> {
-        (*self)
-            .leave_member_and_close_empty_room(room_id, member_id, left_at)
-            .await
+        (*self).leave_member(room_id, member_id, left_at).await
     }
 }
 
@@ -153,14 +150,14 @@ impl<T: RoomRepository + ?Sized> RoomRepository for Arc<T> {
     ) -> Result<bool, StorageError> {
         self.as_ref().member_exists(room_id, member_id).await
     }
-    async fn leave_member_and_close_empty_room(
+    async fn leave_member(
         &self,
         room_id: RoomId,
         member_id: MemberId,
         left_at: chrono::DateTime<Utc>,
     ) -> Result<LeaveRoomOutcome, StorageError> {
         self.as_ref()
-            .leave_member_and_close_empty_room(room_id, member_id, left_at)
+            .leave_member(room_id, member_id, left_at)
             .await
     }
 }
@@ -315,7 +312,7 @@ where
         self.presence.mark_offline(room_id, member_id).await?;
         let outcome = self
             .rooms
-            .leave_member_and_close_empty_room(room_id, member_id, Utc::now())
+            .leave_member(room_id, member_id, Utc::now())
             .await?;
         Ok(outcome)
     }
@@ -416,7 +413,7 @@ mod tests {
                 .get(&id)
                 .is_some_and(|items| items.iter().any(|member| member.id == member_id)))
         }
-        async fn leave_member_and_close_empty_room(
+        async fn leave_member(
             &self,
             id: RoomId,
             member_id: MemberId,
@@ -429,15 +426,7 @@ mod tests {
             let length = items.len();
             items.retain(|member| member.id != member_id);
             let member_left = length != items.len();
-            let room_closed = member_left && items.is_empty();
-            drop(members);
-            if room_closed {
-                self.rooms.lock().expect("测试锁不应中毒").remove(&id);
-            }
-            Ok(LeaveRoomOutcome {
-                member_left,
-                room_closed,
-            })
+            Ok(LeaveRoomOutcome { member_left })
         }
     }
     #[derive(Default)]
@@ -512,7 +501,6 @@ mod tests {
             .await
             .expect("离开会议应成功");
         assert!(first_leave.member_left);
-        assert!(!first_leave.room_closed);
         let repeated_leave = service
             .leave_room(created.room.id, joined.id)
             .await
@@ -536,11 +524,21 @@ mod tests {
             .leave_room(created.room.id, host_id)
             .await
             .expect("最后一名成员离开应成功");
-        assert!(last_leave.room_closed);
-        assert!(matches!(
-            service.get_room(created.room.id).await,
-            Err(RoomServiceError::RoomNotFound)
-        ));
+        assert!(last_leave.member_left);
+        assert!(
+            service
+                .get_room(created.room.id)
+                .await
+                .expect("空房仍应可查询")
+                .members
+                .is_empty()
+        );
+        let (rejoined_room_id, rejoined) = service
+            .join_room_by_meeting_code(&created.room.meeting_code, "小刚")
+            .await
+            .expect("所有成员离开后仍应可以再次加入");
+        assert_eq!(rejoined_room_id, created.room.id);
+        assert_eq!(rejoined.role, MemberRole::Participant);
     }
     #[tokio::test]
     async fn rejects_joining_a_missing_room() {

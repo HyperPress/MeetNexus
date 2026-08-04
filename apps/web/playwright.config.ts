@@ -22,6 +22,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         // 仅用于端到端测试，避免依赖开发者的真实摄像头和麦克风。
         launchOptions: {
+          executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH,
           args: [
             '--use-fake-ui-for-media-stream',
             '--use-fake-device-for-media-stream',

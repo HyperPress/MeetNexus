@@ -238,10 +238,6 @@ async fn leave_room(
         Some(member_id),
         "room_member_left",
     );
-    if outcome.room_closed {
-        log_room_event(context.request_id(), room_id, None, "room_closed_empty");
-        state.event_hub.close_room(room_id);
-    }
     Ok(StatusCode::NO_CONTENT)
 }
 

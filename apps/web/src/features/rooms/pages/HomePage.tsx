@@ -5,17 +5,17 @@ export function HomePage() {
         <div className="hero-content max-w-5xl flex-col gap-12 lg:flex-row">
           <div className="max-w-2xl">
             <div className="badge badge-primary badge-outline mb-5">
-              房间入口与设备检测原型
+              一站式在线会议与协作
             </div>
 
             <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
-              先检查设备，
-              <span className="text-primary">为会议功能做好准备</span>
+              让每一次连接，
+              <span className="block text-primary">都更清晰高效</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-8 text-base-content/70">
-              当前版本提供中文房间入口、表单校验和会前设备预览。
-              创建与加入会议的后端接口已经实现，前端接入和多人音视频仍在开发中。
+              MeetNexus 提供稳定的音视频会议、屏幕共享与录制能力。
+              会前快速检测设备，一键创建或加入会议，让团队随时保持高效沟通。
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">

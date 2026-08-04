@@ -5,6 +5,8 @@
 - 2026-08-04：调整远端媒体播放结构，避免移动端浏览器拦截声音时遮挡或阻断视频。远端视频始终以静音方式独立播放，远端音频使用单独的 `<audio>` 元素；声音授权按钮改为画面右上角小按钮，摄像头关闭时仍可播放远端声音。修改 `apps/web/src/features/meeting/components/MeetingMediaGrid.tsx`；前端 lint、生产构建和媒体端到端回归测试通过。
 - 2026-08-04：修复远端 WHEP 订阅的并发竞争。同一远端成员的摄像头或屏幕共享流在协商完成前会被标记为待创建，重复渲染不会再发送第二个订阅请求；成员离开、组件卸载或迟到响应时会正确清理会话。修改 `apps/web/src/features/meeting/hooks/useMeetingLocalMedia.ts` 和 `apps/web/tests/e2e/meeting-media.spec.ts`；前端 lint、生产构建和媒体端到端回归测试通过。
 - 2026-08-04：修复远端音频在移动端或受限浏览器中被自动播放策略拦截的问题。会议画面在远端流附着后主动调用播放；若浏览器拒绝带声音的自动播放，则显示“点击开启声音”按钮，用户点击后在手势上下文中重试。修改 `apps/web/src/features/meeting/components/MeetingMediaGrid.tsx` 和 `apps/web/tests/e2e/meeting-media.spec.ts`；已通过前端 lint、生产构建和媒体端到端回归测试。
+- 2026-08-04：修复离开会议误关闭房间的问题。成员离开仅写入 `left_at`，暂时无人时房间继续保留；查询原房间页面或用会议号加入均可恢复进入。历史上已写入 `closed_at` 的本机房间也不再被查询排除。后端 19 项单元测试通过，覆盖全员离开后的再次加入。
+- 2026-08-04：修复多人会议后加入成员的远端媒体订阅与声音播放。WHEP 协商进行中会去重，避免成员实时媒体事件触发重复订阅；远端视频固定静音播放，声音改由独立 `<audio>` 元素播放，浏览器拦截自动播放时可点击画面右上角按钮授权。加入会议页和后端同时支持输入 `123456789`，自动规范为 `123-456-789`。前端 lint、生产构建和 15 项房间/媒体 Playwright 测试，以及后端 19 项单元测试通过。
 - 2026-08-04：修复 SQLx 迁移校验和对 Windows 换行符敏感的问题。新增 `.gitattributes` 固定迁移文件的历史换行符约定；本机 `sqlx migrate run` 已通过，API `/ready` 返回 200。
 - 2026-08-04：会议号改为独立的 `xxx-xxx-xxx` 九位数字格式。后端保留 UUID 作为内部鉴权、媒体和录制关联 ID；创建响应及会议页展示短会议号，加入页通过短会议号加入并在成功后保存内部 ID。新增数据库迁移、OpenAPI 契约、Rust 单元测试和前端端到端覆盖。
 - 验证：`cargo fmt --check`、`cargo test --lib`（19 项通过）和 `cargo clippy --lib -- -D warnings` 通过；前端 `npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 以及 `npm run test:e2e --prefix apps/web -- room-pages.spec.ts meeting-media.spec.ts` 通过（14 项）。完整 `cargo test` / `cargo test --test storage` 因正在运行的 API 锁定 `target/debug/api.exe` 无法链接，未停止服务以避免影响当前运行环境。
@@ -76,7 +78,7 @@
 
 ## 最近变更
 
-- 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；最后一名有效成员退出后写入房间 `closed_at`，查询和加入均不再返回已关闭房间。加入与退出使用 PostgreSQL 房间行锁串行化，避免并发退出遗漏空房关闭或关闭过程中仍加入新成员。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
+- 2026-08-04：成员退出改为写入 `left_at` 并从有效成员列表移除；会议不会因暂时无人而自动关闭，因此返回首页、刷新或关闭标签页后，仍可用原会议号再次加入。离会接口支持幂等重试，事件中心同步清理离会成员的媒体状态，退出后的客户端仍可回收自身 Live777 会话。
 - 2026-08-04：房间页在站内导航、浏览器前进后退、刷新和关闭标签页时自动发送幂等 keepalive 退出请求并清理成员会话；显式离开按钮继续等待服务端成功响应，失败时允许用户重试。
 - 验证结果：Rust 格式检查和 `git diff --check` 通过；完整 `cargo check` 因本机缺少 MSVC `link.exe` 未执行完成，真实 PostgreSQL/Redis 集成测试需在迁移后运行。
 

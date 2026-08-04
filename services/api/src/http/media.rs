@@ -327,8 +327,6 @@ async fn close_session_with_kind(
             request_id: context.request_id(),
         });
     }
-    authorize_member(&state, room_id, current_member_id, context.request_id()).await?;
-
     let stream_id = stream_id(room_id, stream_member_id, kind);
     let response = state
         .live777

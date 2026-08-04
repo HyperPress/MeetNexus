@@ -12,6 +12,12 @@ pub struct StorageError {
     pub message: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeaveRoomOutcome {
+    pub member_left: bool,
+    pub room_closed: bool,
+}
+
 #[allow(async_fn_in_trait)]
 pub trait RoomRepository: Send + Sync {
     async fn create_room_with_host(
@@ -21,17 +27,18 @@ pub trait RoomRepository: Send + Sync {
     ) -> Result<(), StorageError>;
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError>;
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError>;
-    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<(), StorageError>;
+    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<bool, StorageError>;
     async fn member_exists(
         &self,
         room_id: RoomId,
         member_id: MemberId,
     ) -> Result<bool, StorageError>;
-    async fn remove_member(
+    async fn leave_member_and_close_empty_room(
         &self,
         room_id: RoomId,
         member_id: MemberId,
-    ) -> Result<bool, StorageError>;
+        left_at: chrono::DateTime<Utc>,
+    ) -> Result<LeaveRoomOutcome, StorageError>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -72,7 +79,7 @@ impl<T: RoomRepository + ?Sized> RoomRepository for &T {
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError> {
         (*self).list_members(room_id).await
     }
-    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<(), StorageError> {
+    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<bool, StorageError> {
         (*self).add_member(room_id, member).await
     }
     async fn member_exists(
@@ -82,12 +89,15 @@ impl<T: RoomRepository + ?Sized> RoomRepository for &T {
     ) -> Result<bool, StorageError> {
         (*self).member_exists(room_id, member_id).await
     }
-    async fn remove_member(
+    async fn leave_member_and_close_empty_room(
         &self,
         room_id: RoomId,
         member_id: MemberId,
-    ) -> Result<bool, StorageError> {
-        (*self).remove_member(room_id, member_id).await
+        left_at: chrono::DateTime<Utc>,
+    ) -> Result<LeaveRoomOutcome, StorageError> {
+        (*self)
+            .leave_member_and_close_empty_room(room_id, member_id, left_at)
+            .await
     }
 }
 
@@ -117,7 +127,7 @@ impl<T: RoomRepository + ?Sized> RoomRepository for Arc<T> {
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError> {
         self.as_ref().list_members(room_id).await
     }
-    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<(), StorageError> {
+    async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<bool, StorageError> {
         self.as_ref().add_member(room_id, member).await
     }
     async fn member_exists(
@@ -127,12 +137,15 @@ impl<T: RoomRepository + ?Sized> RoomRepository for Arc<T> {
     ) -> Result<bool, StorageError> {
         self.as_ref().member_exists(room_id, member_id).await
     }
-    async fn remove_member(
+    async fn leave_member_and_close_empty_room(
         &self,
         room_id: RoomId,
         member_id: MemberId,
-    ) -> Result<bool, StorageError> {
-        self.as_ref().remove_member(room_id, member_id).await
+        left_at: chrono::DateTime<Utc>,
+    ) -> Result<LeaveRoomOutcome, StorageError> {
+        self.as_ref()
+            .leave_member_and_close_empty_room(room_id, member_id, left_at)
+            .await
     }
 }
 
@@ -234,7 +247,9 @@ where
             joined_at: Utc::now(),
             online: true,
         };
-        self.rooms.add_member(room_id, &member).await?;
+        if !self.rooms.add_member(room_id, &member).await? {
+            return Err(RoomServiceError::RoomNotFound);
+        }
         self.presence.mark_online(room_id, member.id).await?;
         Ok(member)
     }
@@ -243,12 +258,15 @@ where
         &self,
         room_id: RoomId,
         member_id: MemberId,
-    ) -> Result<(), RoomServiceError> {
-        if !self.rooms.remove_member(room_id, member_id).await? {
-            return Err(RoomServiceError::MemberNotFound);
-        }
+    ) -> Result<LeaveRoomOutcome, RoomServiceError> {
+        // 先移除临时在线状态，避免 PostgreSQL 已提交后 Redis 失败，
+        // 导致退出事件无法广播且重试时无法识别第一次成功退出。
         self.presence.mark_offline(room_id, member_id).await?;
-        Ok(())
+        let outcome = self
+            .rooms
+            .leave_member_and_close_empty_room(room_id, member_id, Utc::now())
+            .await?;
+        Ok(outcome)
     }
 
     pub async fn refresh_presence(
@@ -305,14 +323,17 @@ mod tests {
                 .cloned()
                 .unwrap_or_default())
         }
-        async fn add_member(&self, id: RoomId, member: &RoomMember) -> Result<(), StorageError> {
+        async fn add_member(&self, id: RoomId, member: &RoomMember) -> Result<bool, StorageError> {
+            if !self.rooms.lock().expect("测试锁不应中毒").contains_key(&id) {
+                return Ok(false);
+            }
             self.members
                 .lock()
                 .expect("测试锁不应中毒")
                 .entry(id)
                 .or_default()
                 .push(member.clone());
-            Ok(())
+            Ok(true)
         }
         async fn member_exists(
             &self,
@@ -326,18 +347,28 @@ mod tests {
                 .get(&id)
                 .is_some_and(|items| items.iter().any(|member| member.id == member_id)))
         }
-        async fn remove_member(
+        async fn leave_member_and_close_empty_room(
             &self,
             id: RoomId,
             member_id: MemberId,
-        ) -> Result<bool, StorageError> {
+            _left_at: chrono::DateTime<Utc>,
+        ) -> Result<LeaveRoomOutcome, StorageError> {
             let mut members = self.members.lock().expect("测试锁不应中毒");
             let Some(items) = members.get_mut(&id) else {
-                return Ok(false);
+                return Ok(LeaveRoomOutcome::default());
             };
             let length = items.len();
             items.retain(|member| member.id != member_id);
-            Ok(length != items.len())
+            let member_left = length != items.len();
+            let room_closed = member_left && items.is_empty();
+            drop(members);
+            if room_closed {
+                self.rooms.lock().expect("测试锁不应中毒").remove(&id);
+            }
+            Ok(LeaveRoomOutcome {
+                member_left,
+                room_closed,
+            })
         }
     }
     #[derive(Default)]
@@ -405,10 +436,17 @@ mod tests {
             .expect("查询会议应成功");
         assert_eq!(queried.members.len(), 2);
         assert!(queried.members.iter().all(|member| member.online));
-        service
+        let first_leave = service
             .leave_room(created.room.id, joined.id)
             .await
             .expect("离开会议应成功");
+        assert!(first_leave.member_left);
+        assert!(!first_leave.room_closed);
+        let repeated_leave = service
+            .leave_room(created.room.id, joined.id)
+            .await
+            .expect("重复离开应保持幂等");
+        assert!(!repeated_leave.member_left);
         assert_eq!(
             service
                 .get_room(created.room.id)
@@ -421,6 +459,16 @@ mod tests {
         assert!(matches!(
             service.refresh_presence(created.room.id, joined.id).await,
             Err(RoomServiceError::MemberNotFound)
+        ));
+        let host_id = created.members[0].id;
+        let last_leave = service
+            .leave_room(created.room.id, host_id)
+            .await
+            .expect("最后一名成员离开应成功");
+        assert!(last_leave.room_closed);
+        assert!(matches!(
+            service.get_room(created.room.id).await,
+            Err(RoomServiceError::RoomNotFound)
         ));
     }
     #[tokio::test]

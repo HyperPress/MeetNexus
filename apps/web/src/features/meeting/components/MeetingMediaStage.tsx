@@ -1,10 +1,5 @@
 import { useMeetingLocalMedia } from '../hooks/useMeetingLocalMedia'
-<<<<<<< HEAD
 import { MeetingMediaGrid } from './MeetingMediaGrid'
-=======
-import { LocalVideoPreview } from './LocalVideoPreview'
-import { RemoteVideoPreview } from './RemoteVideoPreview'
->>>>>>> main
 import { ScreenSharePreview } from './ScreenSharePreview'
 
 interface MeetingMediaStageProps {
@@ -37,36 +32,17 @@ export function MeetingMediaStage({
     sessionToken,
   })
 
-  const hasLocalDevices = media.localStream !== null
-  const isSharingScreen = media.screenStream !== null
-
   return (
     <section className="space-y-5">
-      <section
-        aria-label="会议画面"
-        className="card bg-neutral text-neutral-content shadow-xl"
-      >
-        <div className="card-body gap-4 p-4 sm:p-6">
-          <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="card bg-neutral text-neutral-content shadow-xl">
+        <div className="card-body">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h2 className="card-title text-neutral-content">
                 会议画面
               </h2>
-              <p className="mt-1 text-sm text-neutral-content/70">
-<<<<<<< HEAD
-                当前展示本机真实摄像头和屏幕共享预览；远端音视频将在媒体链路接入后显示。
-              </p>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {isSharingScreen && (
-                <span className="badge badge-secondary">
-                  正在共享屏幕
-                </span>
-              )}
-              <span className="badge badge-warning">
-                仅本地预览
-=======
+              <p className="mt-1 text-sm text-neutral-content/70">
                 通过同源 WHIP/WHEP 接入 Live777，远端成员加入后会显示在下方。
               </p>
             </div>
@@ -77,117 +53,25 @@ export function MeetingMediaStage({
           </div>
 
           <div className="mt-4">
-            <LocalVideoPreview
+            <MeetingMediaGrid
               cameraEnabled={media.cameraEnabled}
+              displayName={displayName}
+              localStream={media.localStream}
+              microphoneEnabled={media.microphoneEnabled}
               mirrored={media.cameraMirrored}
-              stream={media.localStream}
+              remoteMembers={remoteMembers}
+              remoteScreenStreams={media.remoteScreenStreams}
+              remoteStreams={media.remoteStreams}
+              screenStream={media.screenStream}
             />
           </div>
-
-          {Object.entries(media.remoteStreams).length > 0 && (
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {remoteMembers.map((member) => {
-                const stream = media.remoteStreams[member.id]
-                return stream === undefined ? null : (
-                  <RemoteVideoPreview
-                    displayName={member.displayName}
-                    key={member.id}
-                    stream={stream}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {Object.entries(media.remoteScreenStreams).length > 0 && (
-            <section className="mt-4">
-              <h3 className="text-sm font-semibold">远端屏幕共享</h3>
-              <div className="mt-2 grid gap-4 md:grid-cols-2">
-                {remoteMembers.map((member) => {
-                  const stream = media.remoteScreenStreams[member.id]
-                  return stream === undefined ? null : (
-                    <RemoteVideoPreview
-                      displayName={`${member.displayName}的屏幕共享`}
-                      key={member.id}
-                      stream={stream}
-                    />
-                  )
-                })}
-              </div>
-            </section>
-          )}
-
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-box bg-black/30 px-4 py-3">
-            <div className="min-w-0">
-              <p className="truncate font-medium">
-                {displayName}
-              </p>
-
-              <p className="text-xs text-neutral-content/60">
-                {canControlMedia
-                  ? '当前成员（本机）'
-                  : '访客只读模式'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-2">
-              <span
-                className={
-                  media.microphoneEnabled
-                    ? 'badge badge-success'
-                    : 'badge badge-ghost'
-                }
-              >
-                {media.microphoneEnabled
-                  ? '麦克风开启'
-                  : '麦克风关闭'}
-              </span>
-
-              <span
-                className={
-                  media.cameraEnabled
-                    ? 'badge badge-success'
-                    : 'badge badge-ghost'
-                }
-              >
-                {media.cameraEnabled
-                  ? '摄像头开启'
-                  : '摄像头关闭'}
->>>>>>> main
-              </span>
-            </div>
-          </header>
-
-          <MeetingMediaGrid
-            cameraEnabled={media.cameraEnabled}
-            displayName={displayName}
-            localStream={media.localStream}
-            microphoneEnabled={media.microphoneEnabled}
-            mirrored={media.cameraMirrored}
-            remoteMembers={[]}
-            remoteScreenStreams={{}}
-            remoteStreams={{}}
-            screenStream={media.screenStream}
-          />
         </div>
-      </section>
+      </div>
 
-      <section
+      <div
         aria-label="会议媒体控制"
         className="card bg-base-100 shadow-xl"
       >
-<<<<<<< HEAD
-        <div className="card-body gap-5">
-          <div>
-            <h2 className="card-title">音视频控制</h2>
-            <p className="mt-1 text-sm text-base-content/65">
-              只有当前房间成员可以操作并预览本机媒体设备。
-            </p>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-3 rounded-box bg-base-200 p-4">
-            {!hasLocalDevices ? (
-=======
         <div className="card-body">
           {canControlMedia && media.localStream === null && (
             <section className="rounded-box border border-base-300 p-4">
@@ -301,11 +185,11 @@ export function MeetingMediaStage({
 
           <div className="flex flex-wrap justify-center gap-3">
             {media.localStream === null ? (
->>>>>>> main
               <button
                 className="btn btn-primary"
                 disabled={
-                  !canControlMedia || media.isStartingDevices
+                  !canControlMedia ||
+                  media.isStartingDevices
                 }
                 onClick={() => {
                   void media.startDevices()
@@ -323,7 +207,7 @@ export function MeetingMediaStage({
                   className={
                     media.microphoneEnabled
                       ? 'btn btn-success'
-                      : 'btn btn-error btn-outline'
+                      : 'btn btn-outline'
                   }
                   onClick={media.toggleMicrophone}
                   type="button"
@@ -338,7 +222,7 @@ export function MeetingMediaStage({
                   className={
                     media.cameraEnabled
                       ? 'btn btn-success'
-                      : 'btn btn-error btn-outline'
+                      : 'btn btn-outline'
                   }
                   onClick={media.toggleCamera}
                   type="button"
@@ -370,7 +254,7 @@ export function MeetingMediaStage({
               </>
             )}
 
-            {!isSharingScreen ? (
+            {media.screenStream === null ? (
               <button
                 className="btn btn-secondary"
                 disabled={
@@ -398,7 +282,7 @@ export function MeetingMediaStage({
           </div>
 
           {!canControlMedia && (
-            <div className="alert alert-warning" role="alert">
+            <div className="alert alert-warning mt-4" role="alert">
               <span>
                 当前浏览器没有该房间的成员身份，不能使用会议媒体控制。
               </span>
@@ -406,13 +290,13 @@ export function MeetingMediaStage({
           )}
 
           {media.mediaErrorMessage !== null && (
-            <div className="alert alert-error" role="alert">
+            <div className="alert alert-error mt-4" role="alert">
               <span>{media.mediaErrorMessage}</span>
             </div>
           )}
 
           {media.screenErrorMessage !== null && (
-            <div className="alert alert-error" role="alert">
+            <div className="alert alert-error mt-4" role="alert">
               <span>{media.screenErrorMessage}</span>
             </div>
           )}
@@ -420,35 +304,20 @@ export function MeetingMediaStage({
           {media.statusMessage !== null && (
             <div
               aria-live="polite"
-              className="alert alert-info"
+              className="alert alert-info mt-4"
               role="status"
             >
               <span>{media.statusMessage}</span>
             </div>
           )}
 
-<<<<<<< HEAD
-          <p className="text-center text-xs leading-5 text-base-content/60">
-            当前音视频与屏幕共享只在本机预览，不会发送给其他成员，也不会直接访问
-=======
           <p className="mt-3 text-center text-xs leading-5 text-base-content/60">
             摄像头、麦克风和屏幕分享均通过 MeetNexus 的同源媒体代理发布；浏览器不会直接访问
->>>>>>> main
             Live777。
           </p>
         </div>
-      </section>
+      </div>
 
-<<<<<<< HEAD
-      {isSharingScreen && (
-        <details className="collapse-arrow collapse bg-base-100 shadow-xl">
-          <summary className="collapse-title font-semibold">
-            查看本地屏幕捕获详情
-          </summary>
-          <div className="collapse-content">
-            <p className="mb-4 text-sm text-base-content/65">
-              这里显示浏览器返回的共享画面和捕获参数，用于调试共享质量。
-=======
       {media.screenStream !== null && (
         <section className="card bg-base-100 shadow-xl">
           <div className="card-body">
@@ -456,14 +325,14 @@ export function MeetingMediaStage({
 
             <p className="text-sm text-base-content/70">
               这是浏览器返回的共享画面和捕获信息；共享流会同时发布给会议中的其他成员。
->>>>>>> main
             </p>
+
             <ScreenSharePreview
               info={media.screenInfo}
               stream={media.screenStream}
             />
           </div>
-        </details>
+        </section>
       )}
     </section>
   )

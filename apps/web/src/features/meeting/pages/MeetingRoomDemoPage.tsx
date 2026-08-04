@@ -306,7 +306,13 @@ function ScreenShareTile({
 }
 
 export function MeetingRoomDemoPage() {
-  const media = useMeetingLocalMedia()
+  const media = useMeetingLocalMedia({
+    memberId: null,
+    remoteMemberIds: [],
+    remoteScreenMemberIds: [],
+    roomId: 'demo-room',
+    sessionToken: null,
+  })
   const [layoutMode, setLayoutMode] =
     useState<LayoutMode>('grid')
   const [pinnedTileId, setPinnedTileId] =

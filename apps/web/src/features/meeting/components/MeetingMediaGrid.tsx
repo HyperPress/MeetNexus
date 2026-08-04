@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -169,20 +170,48 @@ function MeetingVideoTile({
   tile,
 }: MeetingVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaybackBlocked, setIsPlaybackBlocked] = useState(false)
+
+  const tryToPlayAudio = useCallback((audio: HTMLAudioElement) => {
+    void audio.play().then(
+      () => {
+        setIsPlaybackBlocked(false)
+      },
+      () => {
+        if (!tile.muted) {
+          setIsPlaybackBlocked(true)
+        }
+      },
+    )
+  }, [tile.muted])
 
   useEffect(() => {
     const video = videoRef.current
+    const audio = audioRef.current
 
-    if (video === null) {
-      return
+    if (video !== null) {
+      video.srcObject = tile.stream
+      void video.play().catch(() => {
+        // 静音画面播放失败时不影响远端声音的单独授权。
+      })
     }
 
-    video.srcObject = tile.stream
+    if (audio !== null) {
+      audio.srcObject = tile.stream
+      setIsPlaybackBlocked(false)
+      tryToPlayAudio(audio)
+    }
 
     return () => {
-      video.srcObject = null
+      if (video !== null) {
+        video.srcObject = null
+      }
+      if (audio !== null) {
+        audio.srcObject = null
+      }
     }
-  }, [tile.cameraEnabled, tile.stream])
+  }, [tile.cameraEnabled, tile.stream, tryToPlayAudio])
 
   const firstCharacter = tile.label.trim().charAt(0) || '会'
   const showVideo =
@@ -211,7 +240,7 @@ function MeetingVideoTile({
                 ? 'aspect-video h-full min-h-52 w-full -scale-x-100 object-cover'
                 : 'aspect-video h-full min-h-52 w-full object-cover'
           }
-          muted={tile.muted}
+          muted
           playsInline
         />
       ) : (
@@ -226,6 +255,34 @@ function MeetingVideoTile({
                 : '摄像头已关闭'}
             </p>
           </div>
+        </div>
+      )}
+
+      {tile.stream !== null && !tile.muted && (
+        <audio
+          ref={audioRef}
+          aria-label={`${tile.label}的远端声音`}
+          autoPlay
+          className="hidden"
+        />
+      )}
+
+      {isPlaybackBlocked && (
+        <div className="absolute inset-x-3 top-3 z-10 flex justify-end">
+          <button
+            aria-label={`开启${tile.label}的声音`}
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              const audio = audioRef.current
+
+              if (audio !== null) {
+                tryToPlayAudio(audio)
+              }
+            }}
+            type="button"
+          >
+            点击开启声音
+          </button>
         </div>
       )}
 

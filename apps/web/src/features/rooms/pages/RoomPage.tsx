@@ -308,8 +308,8 @@ export function RoomPage({ roomId }: RoomPageProps) {
               {roomDetails.room.title}
             </h1>
 
-            <p className="mt-2 break-all text-sm text-base-content/70">
-              会议号：{roomDetails.room.id}
+            <p className="mt-2 text-sm text-base-content/70">
+              会议号：{roomDetails.room.meeting_code}
             </p>
 
             <p className="mt-1 text-sm text-base-content/60">

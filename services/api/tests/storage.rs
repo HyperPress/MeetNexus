@@ -28,6 +28,7 @@ async fn postgresql_and_redis_store_room_members_and_presence() {
     );
     let room = Room {
         id: Uuid::new_v4(),
+        meeting_code: "901-234-567".to_owned(),
         title: "存储集成测试".to_owned(),
         created_at: Utc::now(),
     };
@@ -117,6 +118,7 @@ async fn postgresql_rejects_duplicate_active_recordings_for_the_same_member() {
     let recordings = PgRecordingRepository::new(pool.clone());
     let room = Room {
         id: Uuid::new_v4(),
+        meeting_code: "891-234-567".to_owned(),
         title: "录制并发保护测试".to_owned(),
         created_at: Utc::now(),
     };

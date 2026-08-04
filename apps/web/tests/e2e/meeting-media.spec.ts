@@ -152,6 +152,7 @@ async function fulfillApi(route: Route) {
         data: {
           room: {
             id: roomId,
+            meeting_code: '234-567-890',
             title: '双人音视频测试会议',
             created_at: '2026-08-03T00:00:00Z',
           },

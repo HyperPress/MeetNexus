@@ -39,6 +39,7 @@ struct CreateRoomResponse {
 #[derive(Serialize)]
 struct JoinRoomResponse {
     data: crate::domain::RoomMember,
+    room_id: Uuid,
     request_id: Uuid,
     session_token: String,
 }
@@ -56,9 +57,17 @@ struct JoinRoomRequest {
     display_name: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JoinRoomByCodeRequest {
+    meeting_code: String,
+    display_name: String,
+}
+
 pub fn router(state: RoomApiState) -> Router {
     Router::new()
         .route("/rooms", post(create_room))
+        .route("/rooms/join", post(join_room_by_meeting_code))
         .route("/rooms/{room_id}", get(get_room))
         .route("/rooms/{room_id}/members", post(join_room))
         .route(
@@ -161,6 +170,44 @@ async fn join_room(
         StatusCode::CREATED,
         Json(JoinRoomResponse {
             data: member,
+            room_id,
+            request_id: context.request_id(),
+            session_token,
+        }),
+    ))
+}
+
+async fn join_room_by_meeting_code(
+    State(state): State<RoomApiState>,
+    Extension(context): Extension<RequestContext>,
+    body: Result<Json<JoinRoomByCodeRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<JoinRoomResponse>), ApiError> {
+    let Json(body) = parse_json(body, context.request_id())?;
+    let (room_id, member) = service(&state)
+        .join_room_by_meeting_code(&body.meeting_code, &body.display_name)
+        .await
+        .map_err(|error| map_error(error, context.request_id(), None, None))?;
+    let session_token =
+        state
+            .session_tokens
+            .issue(room_id, member.id, member.role, context.request_id())?;
+    state.event_hub.publish(
+        room_id,
+        RoomEvent::MemberJoined {
+            member: member.clone(),
+        },
+    );
+    log_room_event(
+        context.request_id(),
+        room_id,
+        Some(member.id),
+        "room_member_joined",
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(JoinRoomResponse {
+            data: member,
+            room_id,
             request_id: context.request_id(),
             session_token,
         }),

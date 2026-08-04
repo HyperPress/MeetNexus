@@ -116,6 +116,33 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/RoomNotFound"
+  /rooms/join:
+    post:
+      operationId: joinRoomByMeetingCode
+      summary: 通过会议号加入会议
+      description: 使用创建会议时生成的 xxx-xxx-xxx 数字会议号加入；成功后返回内部会议 ID，供后续受保护接口使用。
+      tags:
+        - 房间
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRoomByMeetingCodeRequest"
+      responses:
+        "201":
+          description: 加入成功，返回成员编号与内部会议 ID
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/RoomNotFound"
   /rooms/{room_id}/members/{member_id}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -800,6 +827,22 @@ components:
           minLength: 1
           maxLength: 40
           example: 小红
+    JoinRoomByMeetingCodeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - meeting_code
+        - display_name
+      properties:
+        meeting_code:
+          type: string
+          pattern: '^[0-9]{3}-[0-9]{3}-[0-9]{3}$'
+          example: 123-456-789
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: 小红
     Recording:
       type: object
       additionalProperties: false
@@ -867,12 +910,17 @@ components:
       additionalProperties: false
       required:
         - id
+        - meeting_code
         - title
         - created_at
       properties:
         id:
           type: string
           format: uuid
+        meeting_code:
+          type: string
+          pattern: '^[0-9]{3}-[0-9]{3}-[0-9]{3}$'
+          example: 123-456-789
         title:
           type: string
         created_at:
@@ -948,11 +996,15 @@ components:
       additionalProperties: false
       required:
         - data
+        - room_id
         - session_token
         - request_id
       properties:
         data:
           $ref: "#/components/schemas/RoomMember"
+        room_id:
+          type: string
+          format: uuid
         session_token:
           $ref: "#/components/schemas/SessionToken"
         request_id:

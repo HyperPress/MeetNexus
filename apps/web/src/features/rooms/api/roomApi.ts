@@ -42,11 +42,10 @@ export function getRoom(
 }
 
 export function joinRoom(
-  roomId: string,
   request: JoinRoomRequest,
 ): Promise<JoinRoomResponse> {
   return requestJson(
-    `${roomPath(roomId)}/members`,
+    '/rooms/join',
     JoinRoomResponseSchema,
     {
       method: 'POST',

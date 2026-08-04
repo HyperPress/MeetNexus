@@ -6,9 +6,15 @@ interface MeetingMediaStageProps {
   canControlMedia: boolean
   displayName: string
   memberId: string | null
+  onMediaStateChange: (state: {
+    cameraEnabled: boolean
+    microphoneEnabled: boolean
+  }) => void
   remoteMembers: Array<{
+    cameraEnabled: boolean
     displayName: string
     id: string
+    microphoneEnabled: boolean
   }>
   remoteScreenMemberIds: string[]
   roomId: string
@@ -19,6 +25,7 @@ export function MeetingMediaStage({
   canControlMedia,
   displayName,
   memberId,
+  onMediaStateChange,
   remoteMembers,
   remoteScreenMemberIds,
   roomId,
@@ -26,6 +33,7 @@ export function MeetingMediaStage({
 }: MeetingMediaStageProps) {
   const media = useMeetingLocalMedia({
     memberId,
+    onMediaStateChange,
     remoteMemberIds: remoteMembers.map((member) => member.id),
     remoteScreenMemberIds,
     roomId,

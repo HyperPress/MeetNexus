@@ -10,8 +10,10 @@ type MeetingLayoutMode = 'grid' | 'focus'
 type MeetingTileKind = 'camera' | 'screen'
 
 interface RemoteMember {
+  cameraEnabled: boolean
   displayName: string
   id: string
+  microphoneEnabled: boolean
 }
 
 interface MeetingMediaGridProps {
@@ -189,6 +191,26 @@ function MeetingVideoTile({
   useEffect(() => {
     const video = videoRef.current
     const audio = audioRef.current
+    const audioTracks = new Set<MediaStreamTrack>()
+
+    const retryAudioPlayback = () => {
+      if (audio !== null) {
+        tryToPlayAudio(audio)
+      }
+    }
+
+    const watchAudioTrack = (track: MediaStreamTrack) => {
+      if (track.kind !== 'audio' || audioTracks.has(track)) {
+        return
+      }
+      audioTracks.add(track)
+      track.addEventListener('unmute', retryAudioPlayback)
+    }
+
+    const handleTrackAdded = (event: MediaStreamTrackEvent) => {
+      watchAudioTrack(event.track)
+      retryAudioPlayback()
+    }
 
     if (video !== null) {
       video.srcObject = tile.stream
@@ -201,6 +223,8 @@ function MeetingVideoTile({
       audio.srcObject = tile.stream
       setIsPlaybackBlocked(false)
       tryToPlayAudio(audio)
+      tile.stream?.getAudioTracks().forEach(watchAudioTrack)
+      tile.stream?.addEventListener('addtrack', handleTrackAdded)
     }
 
     return () => {
@@ -209,6 +233,10 @@ function MeetingVideoTile({
       }
       if (audio !== null) {
         audio.srcObject = null
+      }
+      tile.stream?.removeEventListener('addtrack', handleTrackAdded)
+      for (const track of audioTracks) {
+        track.removeEventListener('unmute', retryAudioPlayback)
       }
     }
   }, [tile.cameraEnabled, tile.stream, tryToPlayAudio])
@@ -389,12 +417,16 @@ export function MeetingMediaGrid({
 
       nextTiles.push({
         cameraEnabled:
-          stream !== null && hasLiveTrack(stream, 'video'),
+          member.cameraEnabled &&
+          stream !== null &&
+          hasLiveTrack(stream, 'video'),
         id: `remote-camera-${member.id}`,
         kind: 'camera',
         label: member.displayName,
         microphoneEnabled:
-          stream !== null && hasLiveTrack(stream, 'audio'),
+          member.microphoneEnabled &&
+          stream !== null &&
+          hasLiveTrack(stream, 'audio'),
         mirrored: false,
         muted: false,
         stream,

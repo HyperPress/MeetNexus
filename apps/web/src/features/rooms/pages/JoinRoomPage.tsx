@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react'
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
 import {
   JoinRoomRequestSchema,
-  UuidSchema,
 } from '../../../schemas/room'
 import { joinRoom } from '../api/roomApi'
 import { saveRoomSession } from '../session/roomSession'
@@ -31,14 +30,8 @@ export function JoinRoomPage() {
       return
     }
 
-    const roomIdResult = UuidSchema.safeParse(normalizedRoomId)
-
-    if (!roomIdResult.success) {
-      setErrorMessage('请输入有效的会议号。')
-      return
-    }
-
     const requestResult = JoinRoomRequestSchema.safeParse({
+      meeting_code: normalizedRoomId,
       display_name: displayName,
     })
 
@@ -55,19 +48,18 @@ export function JoinRoomPage() {
 
     try {
       const response = await joinRoom(
-        roomIdResult.data,
         requestResult.data,
       )
 
       saveRoomSession({
-        roomId: roomIdResult.data,
+        roomId: response.room_id,
         memberId: response.data.id,
         displayName: response.data.display_name,
         role: response.data.role,
         sessionToken: response.session_token,
       })
 
-      window.location.hash = `#/rooms/${roomIdResult.data}`
+      window.location.hash = `#/rooms/${response.room_id}`
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error))
     } finally {
@@ -102,15 +94,16 @@ export function JoinRoomPage() {
                 className="input w-full"
                 disabled={isSubmitting}
                 id="room-id"
-                maxLength={64}
+                inputMode="numeric"
+                maxLength={11}
                 onChange={(event) => setRoomId(event.target.value)}
-                placeholder="请输入会议号"
+                placeholder="例如：123-456-789"
                 type="text"
                 value={roomId}
               />
 
               <p className="label">
-                会议号由会议创建者提供，格式为 UUID。
+                会议号由会议创建者提供，格式为 123-456-789。
               </p>
             </fieldset>
 

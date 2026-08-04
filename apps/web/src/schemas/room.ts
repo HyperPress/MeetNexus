@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
 export const UuidSchema = z.uuid()
+export const MeetingCodeSchema = z
+  .string()
+  .regex(/^\d{3}-\d{3}-\d{3}$/, '请输入有效的会议号。')
 export const DateTimeSchema = z.iso.datetime({
   offset: true,
 })
@@ -19,6 +22,7 @@ export const CreateRoomRequestSchema = z.strictObject({
 })
 
 export const JoinRoomRequestSchema = z.strictObject({
+  meeting_code: MeetingCodeSchema,
   display_name: z
     .string()
     .trim()
@@ -30,6 +34,7 @@ export const RoomRoleSchema = z.enum(['host', 'participant'])
 
 export const RoomSchema = z.strictObject({
   id: UuidSchema,
+  meeting_code: MeetingCodeSchema,
   title: z.string(),
   created_at: DateTimeSchema,
 })
@@ -62,6 +67,7 @@ export const CreateRoomResponseSchema = z.strictObject({
 
 export const JoinRoomResponseSchema = z.strictObject({
   data: RoomMemberSchema,
+  room_id: UuidSchema,
   request_id: UuidSchema,
   session_token: SessionTokenSchema,
 })

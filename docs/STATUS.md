@@ -1,5 +1,10 @@
 # 项目进度
 
+## 最新完成
+
+- 2026-08-04：会议号改为独立的 `xxx-xxx-xxx` 九位数字格式。后端保留 UUID 作为内部鉴权、媒体和录制关联 ID；创建响应及会议页展示短会议号，加入页通过短会议号加入并在成功后保存内部 ID。新增数据库迁移、OpenAPI 契约、Rust 单元测试和前端端到端覆盖。
+- 验证：`cargo fmt --check`、`cargo test --lib`（19 项通过）和 `cargo clippy --lib -- -D warnings` 通过；前端 `npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 以及 `npm run test:e2e --prefix apps/web -- room-pages.spec.ts meeting-media.spec.ts` 通过（14 项）。完整 `cargo test` / `cargo test --test storage` 因正在运行的 API 锁定 `target/debug/api.exe` 无法链接，未停止服务以避免影响当前运行环境。
+
 ## 已完成
 
 - 初始化 MeetNexus Git 仓库、AI 协作规则、OpenAPI 骨架与本机工程模板。

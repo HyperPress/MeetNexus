@@ -9,6 +9,7 @@ pub type MemberId = Uuid;
 #[derive(Clone, Debug, Serialize)]
 pub struct Room {
     pub id: RoomId,
+    pub meeting_code: String,
     pub title: String,
     pub created_at: DateTime<Utc>,
 }
@@ -99,6 +100,8 @@ pub enum DomainError {
     InvalidMemberRole,
     #[error("录制状态无效")]
     InvalidRecordingState,
+    #[error("会议号必须是 xxx-xxx-xxx 格式的数字")]
+    InvalidMeetingCode,
 }
 
 pub fn validate_room_title(value: &str) -> Result<String, DomainError> {
@@ -117,6 +120,19 @@ pub fn validate_display_name(value: &str) -> Result<String, DomainError> {
     Ok(value.to_owned())
 }
 
+pub fn validate_meeting_code(value: &str) -> Result<String, DomainError> {
+    let value = value.trim();
+    let valid = value.len() == 11
+        && value.bytes().enumerate().all(|(index, byte)| {
+            matches!(index, 3 | 7) && byte == b'-'
+                || !matches!(index, 3 | 7) && byte.is_ascii_digit()
+        });
+    if !valid {
+        return Err(DomainError::InvalidMeetingCode);
+    }
+    Ok(value.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,5 +142,7 @@ mod tests {
         assert_eq!(validate_display_name(" 小明 ").unwrap(), "小明");
         assert!(validate_room_title("").is_err());
         assert!(validate_display_name(&"a".repeat(41)).is_err());
+        assert_eq!(validate_meeting_code("123-456-789").unwrap(), "123-456-789");
+        assert!(validate_meeting_code("123456789").is_err());
     }
 }

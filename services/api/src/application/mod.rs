@@ -26,6 +26,10 @@ pub trait RoomRepository: Send + Sync {
         host: &RoomMember,
     ) -> Result<(), StorageError>;
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError>;
+    async fn find_room_by_meeting_code(
+        &self,
+        meeting_code: &str,
+    ) -> Result<Option<Room>, StorageError>;
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError>;
     async fn add_member(&self, room_id: RoomId, member: &RoomMember) -> Result<bool, StorageError>;
     async fn member_exists(
@@ -76,6 +80,12 @@ impl<T: RoomRepository + ?Sized> RoomRepository for &T {
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError> {
         (*self).find_room(room_id).await
     }
+    async fn find_room_by_meeting_code(
+        &self,
+        meeting_code: &str,
+    ) -> Result<Option<Room>, StorageError> {
+        (*self).find_room_by_meeting_code(meeting_code).await
+    }
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError> {
         (*self).list_members(room_id).await
     }
@@ -123,6 +133,12 @@ impl<T: RoomRepository + ?Sized> RoomRepository for Arc<T> {
     }
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError> {
         self.as_ref().find_room(room_id).await
+    }
+    async fn find_room_by_meeting_code(
+        &self,
+        meeting_code: &str,
+    ) -> Result<Option<Room>, StorageError> {
+        self.as_ref().find_room_by_meeting_code(meeting_code).await
     }
     async fn list_members(&self, room_id: RoomId) -> Result<Vec<RoomMember>, StorageError> {
         self.as_ref().list_members(room_id).await
@@ -192,11 +208,6 @@ where
         title: &str,
         display_name: &str,
     ) -> Result<RoomDetails, RoomServiceError> {
-        let room = Room {
-            id: Uuid::new_v4(),
-            title: domain::validate_room_title(title)?,
-            created_at: Utc::now(),
-        };
         let host = RoomMember {
             id: Uuid::new_v4(),
             display_name: domain::validate_display_name(display_name)?,
@@ -204,7 +215,32 @@ where
             joined_at: Utc::now(),
             online: true,
         };
-        self.rooms.create_room_with_host(&room, &host).await?;
+        let title = domain::validate_room_title(title)?;
+        let mut room = Room {
+            id: Uuid::new_v4(),
+            meeting_code: generate_meeting_code(),
+            title: title.clone(),
+            created_at: Utc::now(),
+        };
+        let mut created = false;
+        for _ in 0..5 {
+            match self.rooms.create_room_with_host(&room, &host).await {
+                Ok(()) => {
+                    created = true;
+                    break;
+                }
+                Err(error) if error.message == "MEETING_CODE_CONFLICT" => {
+                    room.meeting_code = generate_meeting_code();
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        if !created {
+            return Err(StorageError {
+                message: "MEETING_CODE_CONFLICT".to_owned(),
+            }
+            .into());
+        }
         self.presence.mark_online(room.id, host.id).await?;
         Ok(RoomDetails {
             room,
@@ -254,6 +290,21 @@ where
         Ok(member)
     }
 
+    pub async fn join_room_by_meeting_code(
+        &self,
+        meeting_code: &str,
+        display_name: &str,
+    ) -> Result<(RoomId, RoomMember), RoomServiceError> {
+        let meeting_code = domain::validate_meeting_code(meeting_code)?;
+        let room = self
+            .rooms
+            .find_room_by_meeting_code(&meeting_code)
+            .await?
+            .ok_or(RoomServiceError::RoomNotFound)?;
+        let member = self.join_room(room.id, display_name).await?;
+        Ok((room.id, member))
+    }
+
     pub async fn leave_room(
         &self,
         room_id: RoomId,
@@ -280,6 +331,12 @@ where
         self.presence.mark_online(room_id, member_id).await?;
         Ok(())
     }
+}
+
+fn generate_meeting_code() -> String {
+    let value = 100_000_000 + (Uuid::new_v4().as_u128() % 900_000_000) as u32;
+    let digits = format!("{value:09}");
+    format!("{}-{}-{}", &digits[0..3], &digits[3..6], &digits[6..9])
 }
 
 #[cfg(test)]
@@ -313,6 +370,18 @@ mod tests {
         }
         async fn find_room(&self, id: RoomId) -> Result<Option<Room>, StorageError> {
             Ok(self.rooms.lock().expect("测试锁不应中毒").get(&id).cloned())
+        }
+        async fn find_room_by_meeting_code(
+            &self,
+            meeting_code: &str,
+        ) -> Result<Option<Room>, StorageError> {
+            Ok(self
+                .rooms
+                .lock()
+                .expect("测试锁不应中毒")
+                .values()
+                .find(|room| room.meeting_code == meeting_code)
+                .cloned())
         }
         async fn list_members(&self, id: RoomId) -> Result<Vec<RoomMember>, StorageError> {
             Ok(self
@@ -425,11 +494,13 @@ mod tests {
             .await
             .expect("创建会议应成功");
         assert_eq!(created.room.title, "项目例会");
+        assert!(domain::validate_meeting_code(&created.room.meeting_code).is_ok());
         assert_eq!(created.members[0].role, MemberRole::Host);
-        let joined = service
-            .join_room(created.room.id, "小红")
+        let (joined_room_id, joined) = service
+            .join_room_by_meeting_code(&created.room.meeting_code, "小红")
             .await
             .expect("加入会议应成功");
+        assert_eq!(joined_room_id, created.room.id);
         let queried = service
             .get_room(created.room.id)
             .await

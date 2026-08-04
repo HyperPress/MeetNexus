@@ -42,19 +42,33 @@ impl RoomRepository for PgRoomRepository {
         host: &RoomMember,
     ) -> Result<(), StorageError> {
         let mut transaction = self.pool.begin().await.map_err(storage_error)?;
-        sqlx::query("INSERT INTO rooms (id, title, created_at) VALUES ($1, $2, $3)")
-            .bind(room.id)
-            .bind(&room.title)
-            .bind(room.created_at)
-            .execute(&mut *transaction)
-            .await
-            .map_err(storage_error)?;
+        sqlx::query(
+            "INSERT INTO rooms (id, meeting_code, title, created_at) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(room.id)
+        .bind(&room.meeting_code)
+        .bind(&room.title)
+        .bind(room.created_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| {
+            if error.as_database_error().is_some_and(|database_error| {
+                database_error.code().as_deref() == Some("23505")
+                    && database_error.constraint() == Some("rooms_meeting_code_key")
+            }) {
+                StorageError {
+                    message: "MEETING_CODE_CONFLICT".to_owned(),
+                }
+            } else {
+                storage_error(error)
+            }
+        })?;
         sqlx::query("INSERT INTO room_members (room_id, member_id, display_name, role, joined_at) VALUES ($1, $2, $3, $4, $5)").bind(room.id).bind(host.id).bind(&host.display_name).bind(host.role.as_str()).bind(host.joined_at).execute(&mut *transaction).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)
     }
     async fn find_room(&self, room_id: RoomId) -> Result<Option<Room>, StorageError> {
         let row = sqlx::query(
-            "SELECT id, title, created_at FROM rooms WHERE id = $1 AND closed_at IS NULL",
+            "SELECT id, meeting_code, title, created_at FROM rooms WHERE id = $1 AND closed_at IS NULL",
         )
         .bind(room_id)
         .fetch_optional(&self.pool)
@@ -63,6 +77,30 @@ impl RoomRepository for PgRoomRepository {
         row.map(|row| {
             Ok(Room {
                 id: row.try_get("id").map_err(storage_error)?,
+                meeting_code: row.try_get("meeting_code").map_err(storage_error)?,
+                title: row.try_get("title").map_err(storage_error)?,
+                created_at: row
+                    .try_get::<DateTime<Utc>, _>("created_at")
+                    .map_err(storage_error)?,
+            })
+        })
+        .transpose()
+    }
+    async fn find_room_by_meeting_code(
+        &self,
+        meeting_code: &str,
+    ) -> Result<Option<Room>, StorageError> {
+        let row = sqlx::query(
+            "SELECT id, meeting_code, title, created_at FROM rooms WHERE meeting_code = $1 AND closed_at IS NULL",
+        )
+        .bind(meeting_code)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        row.map(|row| {
+            Ok(Room {
+                id: row.try_get("id").map_err(storage_error)?,
+                meeting_code: row.try_get("meeting_code").map_err(storage_error)?,
                 title: row.try_get("title").map_err(storage_error)?,
                 created_at: row
                     .try_get::<DateTime<Utc>, _>("created_at")

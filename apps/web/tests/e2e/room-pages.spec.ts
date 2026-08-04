@@ -10,11 +10,13 @@ const hostId = '22222222-2222-4222-8222-222222222222'
 const participantId = '33333333-3333-4333-8333-333333333333'
 const requestId = '44444444-4444-4444-8444-444444444444'
 const sessionToken = 'test-room-session-token'
+const meetingCode = '123-456-789'
 
 const roomDetailsResponse = {
   data: {
     room: {
       id: roomId,
+      meeting_code: meetingCode,
       title: 'MeetNexus 项目例会',
       created_at: '2026-07-30T00:00:00Z',
     },
@@ -61,7 +63,7 @@ async function fulfillRoomApi(route: Route) {
   }
 
   if (
-    url.pathname === `/rooms/${roomId}/members` &&
+    url.pathname === '/rooms/join' &&
     method === 'POST'
   ) {
     await route.fulfill({
@@ -75,6 +77,7 @@ async function fulfillRoomApi(route: Route) {
           joined_at: '2026-07-30T00:05:00Z',
           online: true,
         },
+        room_id: roomId,
         request_id: requestId,
         session_token: sessionToken,
       },
@@ -240,6 +243,7 @@ test.describe('MeetNexus 房间入口页面', () => {
         name: 'MeetNexus 项目例会',
       }),
     ).toBeVisible()
+    await expect(page.getByText(`会议号：${meetingCode}`)).toBeVisible()
     await expect(page.getByText('测试主持人（你）')).toBeVisible()
 
     const heartbeat = await heartbeatRequest
@@ -352,7 +356,7 @@ test.describe('MeetNexus 房间入口页面', () => {
     await mockRoomApi(page)
     await page.goto('/#/join')
 
-    await page.getByLabel('会议号').fill(roomId)
+    await page.getByLabel('会议号').fill(meetingCode)
     await page
       .getByLabel('你的显示名称')
       .fill('测试参会者')

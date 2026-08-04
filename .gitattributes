@@ -1,0 +1,3 @@
+# SQLx 使用迁移文件的原始字节计算校验和；历史数据库已记录的换行符需保持稳定。
+services/api/migrations/*.sql text eol=lf
+services/api/migrations/202607290001_create_rooms.sql text eol=crlf

@@ -378,6 +378,27 @@ test.describe('MeetNexus 房间入口页面', () => {
     ).toBeVisible()
   })
 
+  test('加入会议时自动补全九位会议号的横杠', async ({ page }) => {
+    await mockRoomApi(page)
+    await page.goto('/#/join')
+
+    const joinRequest = page.waitForRequest((request) => {
+      return (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/rooms/join' &&
+        request.postDataJSON().meeting_code === meetingCode
+      )
+    })
+
+    await page.getByLabel('会议号').fill('123456789')
+    await expect(page.getByLabel('会议号')).toHaveValue(meetingCode)
+    await page.getByLabel('你的显示名称').fill('测试参会者')
+    await page.getByRole('button', { name: '加入会议' }).click()
+
+    await joinRequest
+    await expect(page).toHaveURL(new RegExp(`#\\/rooms\\/${roomId}$`))
+  })
+
   test('直接访问房间页面时加载真实成员列表', async ({
     page,
   }) => {

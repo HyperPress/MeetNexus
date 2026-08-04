@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
 import {
   JoinRoomRequestSchema,
+  normalizeMeetingCode,
 } from '../../../schemas/room'
 import { joinRoom } from '../api/roomApi'
 import { saveRoomSession } from '../session/roomSession'
@@ -23,7 +24,7 @@ export function JoinRoomPage() {
       return
     }
 
-    const normalizedRoomId = roomId.trim()
+    const normalizedRoomId = normalizeMeetingCode(roomId)
 
     if (normalizedRoomId === '') {
       setErrorMessage('请输入会议号。')
@@ -96,14 +97,20 @@ export function JoinRoomPage() {
                 id="room-id"
                 inputMode="numeric"
                 maxLength={11}
-                onChange={(event) => setRoomId(event.target.value)}
+                onChange={(event) => {
+                  setRoomId(
+                    normalizeMeetingCode(
+                      event.target.value.replace(/[^0-9-]/g, ''),
+                    ),
+                  )
+                }}
                 placeholder="例如：123-456-789"
                 type="text"
                 value={roomId}
               />
 
               <p className="label">
-                会议号由会议创建者提供，格式为 123-456-789。
+                可输入 123-456-789，也可直接输入 9 位数字，系统会自动补全横杠。
               </p>
             </fieldset>
 

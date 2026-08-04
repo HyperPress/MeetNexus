@@ -52,8 +52,71 @@ export const RoomDetailsResponseSchema = z.strictObject({
   request_id: UuidSchema,
 })
 
-export const RoomMemberResponseSchema = z.strictObject({
+export const SessionTokenSchema = z.string().min(1)
+
+export const CreateRoomResponseSchema = z.strictObject({
+  data: RoomDetailsSchema,
+  request_id: UuidSchema,
+  session_token: SessionTokenSchema,
+})
+
+export const JoinRoomResponseSchema = z.strictObject({
   data: RoomMemberSchema,
+  request_id: UuidSchema,
+  session_token: SessionTokenSchema,
+})
+
+export const RoomEventSchema = z.discriminatedUnion('event', [
+  z.strictObject({
+    event: z.literal('member_joined'),
+    member: RoomMemberSchema,
+  }),
+  z.strictObject({
+    event: z.literal('member_left'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('media_started'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('media_stopped'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('screen_share_started'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('screen_share_stopped'),
+    member_id: UuidSchema,
+  }),
+  z.strictObject({
+    event: z.literal('resync_required'),
+  }),
+])
+
+export const RecordingStateSchema = z.enum(['recording', 'stopped'])
+
+export const RecordingSchema = z.strictObject({
+  id: UuidSchema,
+  room_id: UuidSchema,
+  member_id: UuidSchema,
+  started_by: UuidSchema,
+  live777_record_id: z.string().nullable(),
+  mpd_path: z.string().nullable(),
+  state: RecordingStateSchema,
+  started_at: DateTimeSchema,
+  stopped_at: DateTimeSchema.nullable(),
+})
+
+export const RecordingResponseSchema = z.strictObject({
+  data: RecordingSchema,
+  request_id: UuidSchema,
+})
+
+export const RecordingListResponseSchema = z.strictObject({
+  data: z.array(RecordingSchema),
   request_id: UuidSchema,
 })
 
@@ -80,6 +143,16 @@ export type RoomDetails = z.infer<typeof RoomDetailsSchema>
 export type RoomDetailsResponse = z.infer<
   typeof RoomDetailsResponseSchema
 >
-export type RoomMemberResponse = z.infer<
-  typeof RoomMemberResponseSchema
+export type CreateRoomResponse = z.infer<
+  typeof CreateRoomResponseSchema
+>
+export type JoinRoomResponse = z.infer<
+  typeof JoinRoomResponseSchema
+>
+export type RoomEvent = z.infer<typeof RoomEventSchema>
+export type RecordingState = z.infer<typeof RecordingStateSchema>
+export type Recording = z.infer<typeof RecordingSchema>
+export type RecordingResponse = z.infer<typeof RecordingResponseSchema>
+export type RecordingListResponse = z.infer<
+  typeof RecordingListResponseSchema
 >

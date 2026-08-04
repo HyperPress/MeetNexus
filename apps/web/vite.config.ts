@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 const apiProxy = {
   target: 'http://127.0.0.1:8080',
   changeOrigin: true,
+  ws: true,
 }
 
 export default defineConfig({
@@ -12,6 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/health': apiProxy,
+      '/media': apiProxy,
       '/rooms': apiProxy,
     },
   },

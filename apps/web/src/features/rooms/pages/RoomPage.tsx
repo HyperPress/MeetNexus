@@ -6,11 +6,13 @@ import {
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
 import type { RoomDetails } from '../../../schemas/room'
 import { MeetingMediaStage } from '../../meeting/components/MeetingMediaStage'
+import { RecordingPanel } from '../components/RecordingPanel'
 import {
   getRoom,
   leaveRoom,
   refreshRoomMemberPresence,
 } from '../api/roomApi'
+import { connectRoomEvents } from '../api/roomEvents'
 import {
   clearRoomSession,
   readRoomSession,
@@ -39,6 +41,8 @@ export function RoomPage({ roomId }: RoomPageProps) {
   const [heartbeatError, setHeartbeatError] = useState<
     string | null
   >(null)
+  const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
+  const [mediaMemberIds, setMediaMemberIds] = useState<string[]>([])
 
   const currentSession =
     roomSession?.roomId === roomId ? roomSession : null
@@ -68,12 +72,74 @@ export function RoomPage({ roomId }: RoomPageProps) {
 
     const activeSession = currentSession
     let active = true
+    let reconnectTimer: number | null = null
+    let disconnect = () => {}
+
+    function connect() {
+      disconnect = connectRoomEvents({
+        onClose: () => {
+          if (!active) {
+            return
+          }
+          reconnectTimer = window.setTimeout(connect, 1_000)
+        },
+        onEvent: (event) => {
+          if (event.event === 'screen_share_started') {
+            setScreenShareMemberIds((memberIds) =>
+              memberIds.includes(event.member_id)
+                ? memberIds
+                : [...memberIds, event.member_id],
+            )
+          }
+          if (event.event === 'screen_share_stopped') {
+            setScreenShareMemberIds((memberIds) =>
+              memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
+          if (event.event === 'media_started') {
+            setMediaMemberIds((memberIds) =>
+              memberIds.includes(event.member_id)
+                ? memberIds
+                : [...memberIds, event.member_id],
+            )
+          }
+          if (event.event === 'media_stopped') {
+            setMediaMemberIds((memberIds) =>
+              memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
+          void loadRoom()
+        },
+        roomId: activeSession.roomId,
+        sessionToken: activeSession.sessionToken,
+      })
+    }
+
+    connect()
+
+    return () => {
+      active = false
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+      }
+      disconnect()
+    }
+  }, [currentSession, loadRoom])
+
+  useEffect(() => {
+    if (currentSession === null) {
+      return
+    }
+
+    const activeSession = currentSession
+    let active = true
 
     async function sendHeartbeat() {
       try {
         await refreshRoomMemberPresence(
           activeSession.roomId,
           activeSession.memberId,
+          activeSession.sessionToken,
         )
 
         if (active) {
@@ -110,6 +176,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
       await leaveRoom(
         currentSession.roomId,
         currentSession.memberId,
+        currentSession.sessionToken,
       )
 
       clearRoomSession()
@@ -249,6 +316,22 @@ export function RoomPage({ roomId }: RoomPageProps) {
             displayName={
               currentSession?.displayName ?? '未加入会议的访客'
             }
+            memberId={currentSession?.memberId ?? null}
+            remoteMembers={roomDetails.members
+              .filter(
+                (member) =>
+                  member.id !== currentSession?.memberId &&
+                  mediaMemberIds.includes(member.id),
+              )
+              .map((member) => ({
+                id: member.id,
+                displayName: member.display_name,
+              }))}
+            remoteScreenMemberIds={screenShareMemberIds.filter(
+              (memberId) => memberId !== currentSession?.memberId,
+            )}
+            roomId={roomId}
+            sessionToken={currentSession?.sessionToken ?? null}
           />
 
           <aside className="card bg-base-100 shadow-xl">
@@ -266,7 +349,7 @@ export function RoomPage({ roomId }: RoomPageProps) {
                   暂无成员
                 </p>
               ) : (
-                <ul className="mt-2 space-y-3">
+                <ul aria-label="参会成员" className="mt-2 space-y-3">
                   {roomDetails.members.map((member) => {
                     const isCurrentMember =
                       currentSession?.memberId === member.id
@@ -305,6 +388,13 @@ export function RoomPage({ roomId }: RoomPageProps) {
                   })}
                 </ul>
               )}
+
+              <RecordingPanel
+                canManage={currentSession?.role === 'host'}
+                members={roomDetails.members}
+                roomId={roomId}
+                sessionToken={currentSession?.sessionToken ?? null}
+              />
             </div>
           </aside>
         </div>

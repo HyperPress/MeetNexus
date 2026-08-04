@@ -1,8 +1,14 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use api::{
-    http::rooms::RoomApiState,
-    infrastructure::{postgres::PgRoomRepository, redis_presence::RedisPresenceRepository},
+    domain::MemberRole,
+    http::{
+        auth::SessionTokenService, events::RoomEventHub, health::ReadinessApiState,
+        rooms::RoomApiState,
+    },
+    infrastructure::{
+        live777::Live777Client, postgres::PgRoomRepository, redis_presence::RedisPresenceRepository,
+    },
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -29,9 +35,25 @@ impl TestServer {
         let state = RoomApiState {
             rooms: PgRoomRepository::new(database),
             presence: RedisPresenceRepository::new(redis),
+            session_tokens: SessionTokenService::new(
+                "test-secret-that-is-long-enough-for-jwt-signing",
+            ),
+            event_hub: RoomEventHub::default(),
         };
 
         Self::start_with_app(api::app_with_rooms(state)).await
+    }
+
+    async fn start_with_unready_dependencies() -> Self {
+        let database = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://meetnexus:test@127.0.0.1:1/meetnexus")
+            .expect("测试数据库地址应当有效");
+        let redis = redis::Client::open("redis://127.0.0.1:1").expect("测试 Redis 地址应当有效");
+        let live777 =
+            Live777Client::new("http://127.0.0.1:1", None).expect("测试 Live777 地址应当有效");
+        let state = ReadinessApiState::new(database, redis, live777);
+
+        Self::start_with_app(api::http::router_with_readiness(state)).await
     }
 
     async fn start_with_app(app: axum::Router) -> Self {
@@ -59,6 +81,18 @@ impl TestServer {
         request_id: Option<&str>,
         body: Option<&str>,
     ) -> TestResponse {
+        self.request_json_with_headers(method, path, request_id, body, "")
+            .await
+    }
+
+    async fn request_json_with_headers(
+        &self,
+        method: &str,
+        path: &str,
+        request_id: Option<&str>,
+        body: Option<&str>,
+        additional_headers: &str,
+    ) -> TestResponse {
         let mut stream = TcpStream::connect(self.address)
             .await
             .expect("应当能够连接测试服务器");
@@ -72,7 +106,7 @@ impl TestServer {
             "Content-Type: application/json\r\n".to_owned()
         };
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\n{request_id_header}{content_type_header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} {path} HTTP/1.1\r\nHost: {}\r\n{request_id_header}{additional_headers}{content_type_header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             self.address,
             body.len(),
         );
@@ -189,6 +223,20 @@ async fn health_returns_contract_response_and_generated_request_id() {
 }
 
 #[tokio::test]
+async fn readiness_returns_service_unavailable_when_dependencies_cannot_connect() {
+    let server = TestServer::start_with_unready_dependencies().await;
+    let response = server.request("GET", "/ready", None).await;
+
+    assert_eq!(response.status, 503);
+    assert_eq!(response.body["error"]["code"], "DEPENDENCY_UNAVAILABLE");
+    assert_eq!(
+        response.body["error"]["message"],
+        "服务依赖暂未就绪，请稍后重试"
+    );
+    assert_eq!(response.body["request_id"], response.request_id());
+}
+
+#[tokio::test]
 async fn propagates_valid_request_id() {
     let server = TestServer::start().await;
     let request_id = Uuid::new_v4().to_string();
@@ -255,6 +303,44 @@ async fn invalid_room_json_returns_unified_error() {
     assert_eq!(response.body["error"]["code"], "INVALID_REQUEST");
     assert_eq!(response.body["error"]["message"], "请求体格式无效");
     assert_eq!(response.body["request_id"], response.request_id());
+}
+
+#[tokio::test]
+async fn member_operations_require_a_matching_room_session() {
+    let server = TestServer::start_with_rooms().await;
+    let room_id = Uuid::new_v4();
+    let member_id = Uuid::new_v4();
+    let path = format!("/rooms/{room_id}/members/{member_id}/heartbeat");
+
+    let missing_token = server.request("POST", &path, None).await;
+    assert_eq!(missing_token.status, 401);
+    assert_eq!(
+        missing_token.body["error"]["code"],
+        "SESSION_AUTHENTICATION_REQUIRED"
+    );
+
+    let token = SessionTokenService::new("test-secret-that-is-long-enough-for-jwt-signing")
+        .issue(
+            room_id,
+            Uuid::new_v4(),
+            MemberRole::Participant,
+            Uuid::new_v4(),
+        )
+        .expect("测试令牌应当签发成功");
+    let wrong_member = server
+        .request_json_with_headers(
+            "POST",
+            &path,
+            None,
+            None,
+            &format!("Authorization: Bearer {token}\r\n"),
+        )
+        .await;
+    assert_eq!(wrong_member.status, 403);
+    assert_eq!(
+        wrong_member.body["error"]["code"],
+        "ROOM_MEMBER_ACCESS_DENIED"
+    );
 }
 
 #[tokio::test]

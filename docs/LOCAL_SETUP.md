@@ -50,16 +50,20 @@ $env:LIVE777_URL = "http://127.0.0.1:7777"
 $env:RUST_LOG = "api=info,tower_http=info"
 ```
 
-Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`；禁止提交真实密码或 Token。
+Live777 开启 Token 鉴权时，再设置 `LIVE777_TOKEN`。还必须设置至少 32 个字符的随机 `AUTH_JWT_SECRET`，用于签发房间成员会话令牌；禁止提交真实密码、Token 或签名密钥。
+
+录制回放文件根目录由 `RECORDING_STORAGE_ROOT` 指定，默认是仓库内本机 Live777 的 `tools/live777/bin/live777-v0.9.0-x86_64-pc-windows-msvc/storage`。部署时必须将它设为 Live777 recorder 实际写入的目录；不要把该目录公开为静态站点。浏览器只能携带会议成员 Bearer 令牌经 API 读取已停止录制的 MPD 和 `.m4s` 文件。
+
+回放使用浏览器原生 MediaSource，需使用支持 MP4/Opus MSE 的现代 Chromium 浏览器；会议页会在回放轨道不受支持时显示中文提示。
 
 ## 启动顺序
 
 1. 确认 Windows PostgreSQL 服务 `postgresql-x64-15` 正在运行。
 2. 执行 `./scripts/start-local-media-services.ps1` 启动 Memurai 和 Live777。
-3. 启动 API：`cargo run --manifest-path services/api/Cargo.toml`。
+3. 启动 API：`./scripts/start-api.ps1`。该脚本只读取 `.env` 中的允许配置项，并将相对 `RECORDING_STORAGE_ROOT` 解析为绝对路径，避免因 API 工作目录不同而无法读取 Live777 录制文件。
 4. 在另一个终端启动前端：`npm run dev --prefix apps/web`。
 
-当前 API 健康检查地址为 `http://localhost:8080/health`；前端开发地址由 Vite 输出。
+当前 API 存活检查地址为 `http://localhost:8080/health`；依赖就绪检查地址为 `http://localhost:8080/ready`，后者会验证 PostgreSQL、Redis 和 Live777，任一不可用时返回 503。前端开发地址由 Vite 输出。
 前端开发服务器会把同源的 `/health` 与 `/rooms` 请求代理到 `http://127.0.0.1:8080`，因此进行房间创建、查询、加入、离开和心跳联调时，API 必须使用当前约定端口启动。
 
 ## PostgreSQL 数据库初始化
@@ -79,4 +83,4 @@ cargo install sqlx-cli --version 0.8.6 --no-default-features --features rustls,p
 sqlx migrate run --source services/api/migrations --database-url $env:DATABASE_URL
 ```
 
-API 当前不会自动执行迁移。未完成迁移时，`/health` 仍可能返回成功，但房间接口会因缺少数据表而失败。
+API 当前不会自动执行迁移。未完成迁移时，`/health` 仍可能返回成功，但 `/ready` 和房间接口会因 PostgreSQL 查询失败而不能就绪或正常工作。

@@ -4,8 +4,7 @@ MeetNexus 是一款基于 Live777 的多人视频会议软件，采用 React + T
 构建 Web 界面，使用 Rust + Axum 提供业务 API，并由独立运行的 Live777
 负责 WebRTC SFU 音视频转发。
 
-> 当前项目处于功能原型阶段：已完成后端房间模块、中文房间入口和本地设备预览；
-> 前端尚未接入房间 API，媒体鉴权代理及多人音视频闭环仍在开发中。当前暂无公开在线演示。
+> 当前项目处于功能原型阶段：已完成房间 API、中文房间入口、会前设备预览、同源 WHIP/WHEP 媒体代理和基础多人音视频闭环；房间成员操作由短期 Bearer 会话令牌保护。当前暂无公开在线演示。
 
 ## 目标技术架构
 
@@ -67,7 +66,7 @@ MeetNexus 不使用 Docker，PostgreSQL、Memurai 和 Live777 均直接运行在
 .\scripts\setup.ps1
 
 # 启动 API
-cargo run --manifest-path services/api/Cargo.toml
+.\scripts\start-api.ps1
 
 # 在另一个终端启动 Web
 npm run dev --prefix apps/web

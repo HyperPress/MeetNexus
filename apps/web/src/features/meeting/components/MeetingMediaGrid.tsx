@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -169,6 +170,20 @@ function MeetingVideoTile({
   tile,
 }: MeetingVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [isPlaybackBlocked, setIsPlaybackBlocked] = useState(false)
+
+  const tryToPlay = useCallback((video: HTMLVideoElement) => {
+    void video.play().then(
+      () => {
+        setIsPlaybackBlocked(false)
+      },
+      () => {
+        if (!tile.muted) {
+          setIsPlaybackBlocked(true)
+        }
+      },
+    )
+  }, [tile.muted])
 
   useEffect(() => {
     const video = videoRef.current
@@ -178,11 +193,13 @@ function MeetingVideoTile({
     }
 
     video.srcObject = tile.stream
+    setIsPlaybackBlocked(false)
+    tryToPlay(video)
 
     return () => {
       video.srcObject = null
     }
-  }, [tile.cameraEnabled, tile.stream])
+  }, [tile.cameraEnabled, tile.stream, tryToPlay])
 
   const firstCharacter = tile.label.trim().charAt(0) || '会'
   const showVideo =
@@ -226,6 +243,25 @@ function MeetingVideoTile({
                 : '摄像头已关闭'}
             </p>
           </div>
+        </div>
+      )}
+
+      {isPlaybackBlocked && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/55 p-4">
+          <button
+            aria-label={`开启${tile.label}的声音`}
+            className="btn btn-primary"
+            onClick={() => {
+              const video = videoRef.current
+
+              if (video !== null) {
+                tryToPlay(video)
+              }
+            }}
+            type="button"
+          >
+            点击开启声音
+          </button>
         </div>
       )}
 

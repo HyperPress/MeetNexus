@@ -2,6 +2,7 @@
 
 ## 最新完成
 
+- 2026-08-04：修复远端音频在移动端或受限浏览器中被自动播放策略拦截的问题。会议画面在远端流附着后主动调用播放；若浏览器拒绝带声音的自动播放，则显示“点击开启声音”按钮，用户点击后在手势上下文中重试。修改 `apps/web/src/features/meeting/components/MeetingMediaGrid.tsx` 和 `apps/web/tests/e2e/meeting-media.spec.ts`；已通过前端 lint、生产构建和媒体端到端回归测试。
 - 2026-08-04：修复 SQLx 迁移校验和对 Windows 换行符敏感的问题。新增 `.gitattributes` 固定迁移文件的历史换行符约定；本机 `sqlx migrate run` 已通过，API `/ready` 返回 200。
 - 2026-08-04：会议号改为独立的 `xxx-xxx-xxx` 九位数字格式。后端保留 UUID 作为内部鉴权、媒体和录制关联 ID；创建响应及会议页展示短会议号，加入页通过短会议号加入并在成功后保存内部 ID。新增数据库迁移、OpenAPI 契约、Rust 单元测试和前端端到端覆盖。
 - 验证：`cargo fmt --check`、`cargo test --lib`（19 项通过）和 `cargo clippy --lib -- -D warnings` 通过；前端 `npm run lint --prefix apps/web`、`npm run build --prefix apps/web` 以及 `npm run test:e2e --prefix apps/web -- room-pages.spec.ts meeting-media.spec.ts` 通过（14 项）。完整 `cargo test` / `cargo test --test storage` 因正在运行的 API 锁定 `target/debug/api.exe` 无法链接，未停止服务以避免影响当前运行环境。

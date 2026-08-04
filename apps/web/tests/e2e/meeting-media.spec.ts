@@ -6,11 +6,16 @@ const participantId = 'ca5abed4-4635-4ab4-a23d-c2b9f1a8ad79'
 const requestId = 'f3d40968-f0e0-44fc-8b68-89d7f44c9ce3'
 const sessionToken = 'test-media-session-token'
 
-async function installIsolatedPeerConnection(page: Page) {
-  await page.addInitScript(() => {
+async function installIsolatedPeerConnection(
+  page: Page,
+  blockRemotePlayback = false,
+) {
+  await page.addInitScript((shouldBlockRemotePlayback) => {
     const testWindow = window as typeof window & {
+      __meetNexusBlockRemotePlayback?: boolean
       __meetNexusMediaConstraints?: MediaStreamConstraints[]
     }
+    testWindow.__meetNexusBlockRemotePlayback = shouldBlockRemotePlayback
     const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices,
     )
@@ -54,6 +59,20 @@ async function installIsolatedPeerConnection(page: Page) {
       value: async (constraints: MediaStreamConstraints) => {
         testWindow.__meetNexusMediaConstraints?.push(constraints)
         return originalGetUserMedia({ audio: true, video: true })
+      },
+    })
+
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: function play(this: HTMLMediaElement): Promise<void> {
+        if (
+          !this.muted &&
+          testWindow.__meetNexusBlockRemotePlayback === true
+        ) {
+          return Promise.reject(new DOMException('自动播放已被拦截'))
+        }
+
+        return Promise.resolve()
       },
     })
 
@@ -137,7 +156,7 @@ async function installIsolatedPeerConnection(page: Page) {
       configurable: true,
       value: IsolatedWebSocket,
     })
-  })
+  }, blockRemotePlayback)
 }
 
 async function fulfillApi(route: Route) {
@@ -223,7 +242,7 @@ test.describe('MeetNexus 音视频媒体流程', () => {
   test('双人成员可发布、订阅、关闭设备并在断线后重新协商', async ({
     page,
   }) => {
-    await installIsolatedPeerConnection(page)
+    await installIsolatedPeerConnection(page, true)
     await page.addInitScript(
       ({ roomId: storedRoomId, memberId, token }) => {
         sessionStorage.setItem(
@@ -284,6 +303,19 @@ test.describe('MeetNexus 音视频媒体流程', () => {
     await expect(
       page.getByLabel('测试参会者的远端画面'),
     ).toBeVisible()
+    const enableSoundButton = page.getByRole('button', {
+      name: '开启测试参会者的声音',
+    })
+    await expect(enableSoundButton).toBeVisible()
+    await page.evaluate(() => {
+      ;(
+        window as typeof window & {
+          __meetNexusBlockRemotePlayback?: boolean
+        }
+      ).__meetNexusBlockRemotePlayback = false
+    })
+    await enableSoundButton.click()
+    await expect(enableSoundButton).toBeHidden()
 
     const recoveredPublish = page.waitForRequest(
       (request) =>

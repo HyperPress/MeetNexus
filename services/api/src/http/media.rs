@@ -1,11 +1,16 @@
 use axum::{
-    Extension, Router,
+    Extension, Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{delete, post},
+    routing::{delete, get, post},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use chrono::{Duration, Utc};
+use hmac::{Hmac, Mac};
+use serde::Serialize;
+use sha1::Sha1;
 use uuid::Uuid;
 
 use crate::{
@@ -20,7 +25,11 @@ use super::{
     ApiError,
     auth::SessionTokenService,
     request_context::{self, RequestContext},
+    response::SuccessResponse,
 };
+
+const TURN_CREDENTIAL_LIFETIME: Duration = Duration::hours(1);
+type HmacSha1 = Hmac<Sha1>;
 
 #[derive(Clone)]
 pub struct MediaApiState {
@@ -28,6 +37,20 @@ pub struct MediaApiState {
     pub rooms: PgRoomRepository,
     pub session_tokens: SessionTokenService,
     pub event_hub: super::events::RoomEventHub,
+    pub turn_urls: Vec<String>,
+    pub turn_shared_secret: Option<String>,
+}
+
+#[derive(Serialize)]
+struct IceServer {
+    urls: Vec<String>,
+    username: String,
+    credential: String,
+}
+
+#[derive(Serialize)]
+struct IceServersData {
+    ice_servers: Vec<IceServer>,
 }
 
 #[derive(Clone, Copy)]
@@ -48,6 +71,7 @@ struct SessionCloseInput {
 
 pub fn router(state: MediaApiState) -> Router {
     Router::new()
+        .route("/media/ice-servers/{room_id}", get(ice_servers))
         .route("/media/whip/{room_id}/{member_id}", post(publish))
         .route("/media/whep/{room_id}/{member_id}", post(subscribe))
         .route(
@@ -68,6 +92,58 @@ pub fn router(state: MediaApiState) -> Router {
         )
         .with_state(state)
         .layer(axum::middleware::from_fn(request_context::attach))
+}
+
+async fn ice_servers(
+    State(state): State<MediaApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path(room_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let room_id = parse_uuid(&room_id, context.request_id())?;
+    let current_member = state
+        .session_tokens
+        .authenticate(&headers, context.request_id())?;
+    let member_id = current_member.member_id();
+    if !current_member.belongs_to_room(room_id) {
+        return Err(ApiError::MediaAccessDenied {
+            request_id: context.request_id(),
+        });
+    }
+    authorize_member(&state, room_id, member_id, context.request_id()).await?;
+
+    let ice_servers = match (&state.turn_shared_secret, state.turn_urls.is_empty()) {
+        (Some(secret), false) => {
+            let (username, credential) = issue_turn_credential(secret, member_id);
+            vec![IceServer {
+                urls: state.turn_urls,
+                username,
+                credential,
+            }]
+        }
+        _ => Vec::new(),
+    };
+    let mut response = Json(SuccessResponse {
+        data: IceServersData { ice_servers },
+        request_id: context.request_id(),
+    })
+    .into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "no-store".parse().expect("valid cache header"),
+    );
+    Ok(response)
+}
+
+fn issue_turn_credential(secret: &str, member_id: Uuid) -> (String, String) {
+    let username = format!(
+        "{}:{member_id}",
+        (Utc::now() + TURN_CREDENTIAL_LIFETIME).timestamp()
+    );
+    let mut mac = HmacSha1::new_from_slice(secret.as_bytes())
+        .expect("HMAC-SHA1 accepts shared secrets of any length");
+    mac.update(username.as_bytes());
+    (username, STANDARD.encode(mac.finalize().into_bytes()))
 }
 
 async fn publish(
@@ -557,9 +633,12 @@ fn log_media_error(
 
 #[cfg(test)]
 mod tests {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use hmac::{Hmac, Mac};
+    use sha1::Sha1;
     use uuid::Uuid;
 
-    use super::should_broadcast_publisher_media_stopped;
+    use super::{issue_turn_credential, should_broadcast_publisher_media_stopped};
 
     #[test]
     fn only_publisher_closing_its_session_stops_a_media_stream() {
@@ -572,5 +651,16 @@ mod tests {
         assert!(!should_broadcast_publisher_media_stopped(
             subscriber, publisher
         ));
+    }
+
+    #[test]
+    fn issues_coturn_rest_credentials() {
+        let member_id = Uuid::nil();
+        let (username, credential) = issue_turn_credential("shared-secret", member_id);
+        assert!(username.ends_with(":00000000-0000-0000-0000-000000000000"));
+
+        let mut mac = Hmac::<Sha1>::new_from_slice(b"shared-secret").expect("valid key");
+        mac.update(username.as_bytes());
+        assert_eq!(credential, STANDARD.encode(mac.finalize().into_bytes()));
     }
 }

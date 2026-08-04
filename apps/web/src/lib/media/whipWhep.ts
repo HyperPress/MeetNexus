@@ -13,6 +13,14 @@ interface NegotiationOptions {
   streamMemberId: string
 }
 
+interface IceServerResponse {
+  data?: {
+    ice_servers?: unknown
+  }
+}
+
+const iceServerRequests = new Map<string, Promise<RTCIceServer[]>>()
+
 function mediaPath(
   operation: 'whip' | 'whep',
   options: NegotiationOptions,
@@ -35,6 +43,62 @@ function mediaHeaders(sessionToken: string): HeadersInit {
     Authorization: `Bearer ${sessionToken}`,
     'Content-Type': 'application/sdp',
   }
+}
+
+function parseIceServers(body: IceServerResponse): RTCIceServer[] {
+  const servers = body.data?.ice_servers
+  if (!Array.isArray(servers)) {
+    return []
+  }
+
+  return servers.flatMap((server): RTCIceServer[] => {
+    if (
+      typeof server !== 'object' ||
+      server === null ||
+      !('urls' in server) ||
+      !Array.isArray(server.urls) ||
+      !server.urls.every((url: unknown) => typeof url === 'string') ||
+      !('username' in server) ||
+      typeof server.username !== 'string' ||
+      !('credential' in server) ||
+      typeof server.credential !== 'string'
+    ) {
+      return []
+    }
+    return [
+      {
+        urls: server.urls,
+        username: server.username,
+        credential: server.credential,
+      },
+    ]
+  })
+}
+
+async function loadIceServers(options: NegotiationOptions): Promise<RTCIceServer[]> {
+  try {
+    const response = await fetch(`/media/ice-servers/${options.roomId}`, {
+      headers: { Authorization: `Bearer ${options.sessionToken}` },
+    })
+    if (!response.ok) {
+      return []
+    }
+    return parseIceServers((await response.json()) as IceServerResponse)
+  } catch {
+    // 在滚动发布期间或 TURN 尚未配置时，保留现有的直连协商能力。
+    return []
+  }
+}
+
+function createPeerConnection(options: NegotiationOptions): Promise<RTCPeerConnection> {
+  const cacheKey = `${options.roomId}:${options.sessionToken}`
+  let request = iceServerRequests.get(cacheKey)
+  if (request === undefined) {
+    request = loadIceServers(options)
+    iceServerRequests.set(cacheKey, request)
+    void request.catch(() => iceServerRequests.delete(cacheKey))
+  }
+  return request.then((iceServers) => new RTCPeerConnection({ iceServers }))
 }
 
 function waitForIceGathering(connection: RTCPeerConnection): Promise<void> {
@@ -132,7 +196,7 @@ export async function publishWhip(
   options: NegotiationOptions,
   stream: MediaStream,
 ): Promise<MediaSession> {
-  const connection = new RTCPeerConnection()
+  const connection = await createPeerConnection(options)
   for (const track of stream.getTracks()) {
     connection.addTrack(track, stream)
   }
@@ -153,7 +217,7 @@ export async function publishWhip(
 export async function subscribeWhep(
   options: NegotiationOptions,
 ): Promise<SubscriptionSession> {
-  const connection = new RTCPeerConnection()
+  const connection = await createPeerConnection(options)
   const stream = new MediaStream()
   connection.addTransceiver('audio', { direction: 'recvonly' })
   connection.addTransceiver('video', { direction: 'recvonly' })

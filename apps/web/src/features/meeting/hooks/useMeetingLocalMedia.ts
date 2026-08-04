@@ -96,6 +96,7 @@ export function useMeetingLocalMedia({
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<
     Record<string, MediaStream>
   >({})
+  const [subscriptionRetryVersion, setSubscriptionRetryVersion] = useState(0)
 
   const notifyMediaStateChange = useCallback(
     (cameraEnabled: boolean, microphoneEnabled: boolean) => {
@@ -371,11 +372,7 @@ export function useMeetingLocalMedia({
   ])
 
   useEffect(() => {
-    if (
-      memberId === null ||
-      sessionToken === null ||
-      localStreamRef.current === null
-    ) {
+    if (memberId === null || sessionToken === null) {
       desiredRemoteMemberIdsRef.current.clear()
       return
     }
@@ -430,10 +427,24 @@ export function useMeetingLocalMedia({
           pendingSubscriptionsRef.current.delete(remoteMemberId)
           if (mountedRef.current) {
             setMediaErrorMessage(getMeetingMediaErrorMessage(error))
+            window.setTimeout(() => {
+              if (
+                mountedRef.current &&
+                desiredRemoteMemberIdsRef.current.has(remoteMemberId)
+              ) {
+                setSubscriptionRetryVersion((version) => version + 1)
+              }
+            }, 1_000)
           }
         })
     }
-  }, [memberId, remoteMemberIds, roomId, sessionToken])
+  }, [
+    memberId,
+    remoteMemberIds,
+    roomId,
+    sessionToken,
+    subscriptionRetryVersion,
+  ])
 
   useEffect(() => {
     if (memberId === null || sessionToken === null) {

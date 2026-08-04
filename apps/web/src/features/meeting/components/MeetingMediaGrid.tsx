@@ -170,10 +170,11 @@ function MeetingVideoTile({
   tile,
 }: MeetingVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const [isPlaybackBlocked, setIsPlaybackBlocked] = useState(false)
 
-  const tryToPlay = useCallback((video: HTMLVideoElement) => {
-    void video.play().then(
+  const tryToPlayAudio = useCallback((audio: HTMLAudioElement) => {
+    void audio.play().then(
       () => {
         setIsPlaybackBlocked(false)
       },
@@ -187,19 +188,30 @@ function MeetingVideoTile({
 
   useEffect(() => {
     const video = videoRef.current
+    const audio = audioRef.current
 
-    if (video === null) {
-      return
+    if (video !== null) {
+      video.srcObject = tile.stream
+      void video.play().catch(() => {
+        // 静音画面播放失败时不影响远端声音的单独授权。
+      })
     }
 
-    video.srcObject = tile.stream
-    setIsPlaybackBlocked(false)
-    tryToPlay(video)
+    if (audio !== null) {
+      audio.srcObject = tile.stream
+      setIsPlaybackBlocked(false)
+      tryToPlayAudio(audio)
+    }
 
     return () => {
-      video.srcObject = null
+      if (video !== null) {
+        video.srcObject = null
+      }
+      if (audio !== null) {
+        audio.srcObject = null
+      }
     }
-  }, [tile.cameraEnabled, tile.stream, tryToPlay])
+  }, [tile.cameraEnabled, tile.stream, tryToPlayAudio])
 
   const firstCharacter = tile.label.trim().charAt(0) || '会'
   const showVideo =
@@ -228,7 +240,7 @@ function MeetingVideoTile({
                 ? 'aspect-video h-full min-h-52 w-full -scale-x-100 object-cover'
                 : 'aspect-video h-full min-h-52 w-full object-cover'
           }
-          muted={tile.muted}
+          muted
           playsInline
         />
       ) : (
@@ -246,16 +258,25 @@ function MeetingVideoTile({
         </div>
       )}
 
+      {tile.stream !== null && !tile.muted && (
+        <audio
+          ref={audioRef}
+          aria-label={`${tile.label}的远端声音`}
+          autoPlay
+          className="hidden"
+        />
+      )}
+
       {isPlaybackBlocked && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/55 p-4">
+        <div className="absolute inset-x-3 top-3 z-10 flex justify-end">
           <button
             aria-label={`开启${tile.label}的声音`}
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             onClick={() => {
-              const video = videoRef.current
+              const audio = audioRef.current
 
-              if (video !== null) {
-                tryToPlay(video)
+              if (audio !== null) {
+                tryToPlayAudio(audio)
               }
             }}
             type="button"

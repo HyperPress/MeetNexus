@@ -2,6 +2,7 @@
 
 ## 最新完成
 
+- 2026-08-04：调整远端媒体播放结构，避免移动端浏览器拦截声音时遮挡或阻断视频。远端视频始终以静音方式独立播放，远端音频使用单独的 `<audio>` 元素；声音授权按钮改为画面右上角小按钮，摄像头关闭时仍可播放远端声音。修改 `apps/web/src/features/meeting/components/MeetingMediaGrid.tsx`；前端 lint、生产构建和媒体端到端回归测试通过。
 - 2026-08-04：修复远端 WHEP 订阅的并发竞争。同一远端成员的摄像头或屏幕共享流在协商完成前会被标记为待创建，重复渲染不会再发送第二个订阅请求；成员离开、组件卸载或迟到响应时会正确清理会话。修改 `apps/web/src/features/meeting/hooks/useMeetingLocalMedia.ts` 和 `apps/web/tests/e2e/meeting-media.spec.ts`；前端 lint、生产构建和媒体端到端回归测试通过。
 - 2026-08-04：修复远端音频在移动端或受限浏览器中被自动播放策略拦截的问题。会议画面在远端流附着后主动调用播放；若浏览器拒绝带声音的自动播放，则显示“点击开启声音”按钮，用户点击后在手势上下文中重试。修改 `apps/web/src/features/meeting/components/MeetingMediaGrid.tsx` 和 `apps/web/tests/e2e/meeting-media.spec.ts`；已通过前端 lint、生产构建和媒体端到端回归测试。
 - 2026-08-04：修复 SQLx 迁移校验和对 Windows 换行符敏感的问题。新增 `.gitattributes` 固定迁移文件的历史换行符约定；本机 `sqlx migrate run` 已通过，API `/ready` 返回 200。

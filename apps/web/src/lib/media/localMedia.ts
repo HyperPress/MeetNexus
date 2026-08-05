@@ -153,9 +153,16 @@ export async function startLocalMedia(
   }
 
   try {
+    const cameraConstraint = createDeviceConstraint(request.cameraId)
     return await navigator.mediaDevices.getUserMedia({
       audio: createDeviceConstraint(request.microphoneId),
-      video: createDeviceConstraint(request.cameraId),
+      video: {
+        ...(cameraConstraint === true ? {} : cameraConstraint),
+        // 限制摄像头分辨率和帧率，控制 TURN 中继下的总带宽。
+        frameRate: { ideal: 24, max: 30 },
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+      },
     })
   } catch (error) {
     throw normalizeMediaError(error)
@@ -199,11 +206,11 @@ export async function startScreenShare(): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getDisplayMedia({
       audio: false,
-      // 限制共享分辨率与帧率，避免 1080p 高码率在 TURN 中继下占满服务器带宽。
+      // 限制共享分辨率与帧率，避免高码率在 TURN 中继下占满服务器带宽。
       video: {
-        frameRate: { ideal: 24, max: 30 },
-        width: { max: 1280 },
-        height: { max: 720 },
+        frameRate: { ideal: 15, max: 15 },
+        width: { max: 960 },
+        height: { max: 540 },
       },
     })
   } catch (error) {

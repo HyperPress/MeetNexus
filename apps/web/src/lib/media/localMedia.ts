@@ -199,7 +199,12 @@ export async function startScreenShare(): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getDisplayMedia({
       audio: false,
-      video: true,
+      // 限制共享分辨率与帧率，避免 1080p 高码率在 TURN 中继下占满服务器带宽。
+      video: {
+        frameRate: { ideal: 24, max: 30 },
+        width: { max: 1280 },
+        height: { max: 720 },
+      },
     })
   } catch (error) {
     throw normalizeScreenShareError(error)

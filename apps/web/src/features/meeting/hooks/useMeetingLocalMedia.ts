@@ -41,7 +41,8 @@ const emptyDevices: LocalMediaDevices = {
   microphones: [],
 }
 
-const remoteVideoTrackTimeoutMs = 8_000
+const remoteVideoTrackTimeoutMs = 15_000
+const remoteDisconnectedRetryTimeoutMs = 10_000
 
 export function useMeetingLocalMedia({
   memberId,
@@ -155,6 +156,34 @@ export function useMeetingLocalMedia({
       }
     },
     [],
+  )
+
+  const armVideoTrackWatchdog = useCallback(
+    (
+      timers: MutableRefObject<Map<string, number>>,
+      memberId: string,
+      stream: MediaStream,
+      onWatchdogFire: () => void,
+    ) => {
+      const handleTrackAdded = (event: MediaStreamTrackEvent) => {
+        if (
+          event.track.kind !== 'video' ||
+          stream.getVideoTracks().length === 0
+        ) {
+          return
+        }
+        clearTrackWatchdog(timers, memberId)
+        stream.removeEventListener('addtrack', handleTrackAdded)
+      }
+      stream.addEventListener('addtrack', handleTrackAdded)
+      const timerId = window.setTimeout(() => {
+        timers.current.delete(memberId)
+        stream.removeEventListener('addtrack', handleTrackAdded)
+        onWatchdogFire()
+      }, remoteVideoTrackTimeoutMs)
+      timers.current.set(memberId, timerId)
+    },
+    [clearTrackWatchdog],
   )
 
   const refreshDevices = useCallback(async () => {
@@ -525,33 +554,45 @@ export function useMeetingLocalMedia({
             if (!mountedRef.current) {
               return
             }
-            if (session.connection.connectionState === 'failed') {
+            const connectionState = session.connection.connectionState
+            if (connectionState === 'failed') {
               retrySubscription()
             }
-            if (session.connection.connectionState === 'disconnected') {
-              disconnectTimer = window.setTimeout(retrySubscription, 3_000)
+            if (connectionState === 'disconnected') {
+              // disconnected 通常是 ICE 切换等临时状态，放宽窗口等待恢复。
+              if (disconnectTimer === null) {
+                disconnectTimer = window.setTimeout(
+                  retrySubscription,
+                  remoteDisconnectedRetryTimeoutMs,
+                )
+              }
             }
-            if (session.connection.connectionState === 'connected') {
+            if (
+              connectionState === 'connecting' ||
+              connectionState === 'connected'
+            ) {
               if (disconnectTimer !== null) {
                 window.clearTimeout(disconnectTimer)
                 disconnectTimer = null
               }
             }
           })
-          // WHEP can become connected before Live777 starts forwarding video.
-          const trackWatchdogId = window.setTimeout(() => {
-            subscriptionTrackWatchdogsRef.current.delete(remoteMemberId)
-            if (
-              mountedRef.current &&
-              subscriptionsRef.current.get(remoteMemberId) === session &&
-              session.stream.getVideoTracks().length === 0
-            ) {
-              retrySubscription()
-            }
-          }, remoteVideoTrackTimeoutMs)
-          subscriptionTrackWatchdogsRef.current.set(
+          // WHEP 完成协商但 Live777 尚未转发视频时，按连接状态判断而不是
+          // 盲目重订阅：只有连接已 connected 且 15s 内仍未收到视频轨才恢复。
+          armVideoTrackWatchdog(
+            subscriptionTrackWatchdogsRef,
             remoteMemberId,
-            trackWatchdogId,
+            session.stream,
+            () => {
+              if (
+                mountedRef.current &&
+                subscriptionsRef.current.get(remoteMemberId) === session &&
+                session.connection.connectionState === 'connected' &&
+                session.stream.getVideoTracks().length === 0
+              ) {
+                retrySubscription()
+              }
+            },
           )
         })
         .catch((error: unknown) => {
@@ -563,6 +604,7 @@ export function useMeetingLocalMedia({
         })
     }
   }, [
+    armVideoTrackWatchdog,
     clearTrackWatchdog,
     memberId,
     remoteMemberIds,
@@ -654,36 +696,45 @@ export function useMeetingLocalMedia({
             if (!mountedRef.current) {
               return
             }
-            if (session.connection.connectionState === 'failed') {
+            const connectionState = session.connection.connectionState
+            if (connectionState === 'failed') {
               retryScreenSubscription()
             }
-            if (session.connection.connectionState === 'disconnected') {
-              disconnectTimer = window.setTimeout(
-                retryScreenSubscription,
-                3_000,
-              )
+            if (connectionState === 'disconnected') {
+              // disconnected 通常是 ICE 切换等临时状态，放宽窗口等待恢复。
+              if (disconnectTimer === null) {
+                disconnectTimer = window.setTimeout(
+                  retryScreenSubscription,
+                  remoteDisconnectedRetryTimeoutMs,
+                )
+              }
             }
-            if (session.connection.connectionState === 'connected') {
+            if (
+              connectionState === 'connecting' ||
+              connectionState === 'connected'
+            ) {
               if (disconnectTimer !== null) {
                 window.clearTimeout(disconnectTimer)
                 disconnectTimer = null
               }
             }
           })
-          // WHEP can become connected before Live777 starts forwarding video.
-          const trackWatchdogId = window.setTimeout(() => {
-            screenSubscriptionTrackWatchdogsRef.current.delete(remoteMemberId)
-            if (
-              mountedRef.current &&
-              screenSubscriptionsRef.current.get(remoteMemberId) === session &&
-              session.stream.getVideoTracks().length === 0
-            ) {
-              retryScreenSubscription()
-            }
-          }, remoteVideoTrackTimeoutMs)
-          screenSubscriptionTrackWatchdogsRef.current.set(
+          // WHEP 完成协商但 Live777 尚未转发视频时，按连接状态判断而不是
+          // 盲目重订阅：只有连接已 connected 且 15s 内仍未收到视频轨才恢复。
+          armVideoTrackWatchdog(
+            screenSubscriptionTrackWatchdogsRef,
             remoteMemberId,
-            trackWatchdogId,
+            session.stream,
+            () => {
+              if (
+                mountedRef.current &&
+                screenSubscriptionsRef.current.get(remoteMemberId) === session &&
+                session.connection.connectionState === 'connected' &&
+                session.stream.getVideoTracks().length === 0
+              ) {
+                retryScreenSubscription()
+              }
+            },
           )
         })
         .catch((error: unknown) => {
@@ -695,6 +746,7 @@ export function useMeetingLocalMedia({
         })
     }
   }, [
+    armVideoTrackWatchdog,
     clearTrackWatchdog,
     memberId,
     remoteScreenMemberIds,
@@ -807,8 +859,10 @@ export function useMeetingLocalMedia({
           }
 
           screenStreamRef.current = null
+          closeScreenPublishSession()
           setScreenStream(null)
           setScreenInfo(null)
+          setScreenErrorMessage(null)
           setStatusMessage('屏幕分享已由浏览器停止。')
         },
         {
@@ -835,7 +889,7 @@ export function useMeetingLocalMedia({
         setIsStartingScreenShare(false)
       }
     }
-  }, [isStartingScreenShare, publishScreenStream])
+  }, [closeScreenPublishSession, isStartingScreenShare, publishScreenStream])
 
   return {
     cameraEnabled,

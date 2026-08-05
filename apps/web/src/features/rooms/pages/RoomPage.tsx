@@ -5,9 +5,11 @@ import {
   useState,
 } from 'react'
 import { getApiErrorMessage } from '../../../lib/api/httpClient'
-import type { RoomDetails } from '../../../schemas/room'
+import type { RoomChatMessage, RoomDetails } from '../../../schemas/room'
 import { MeetingMediaStage } from '../../meeting/components/MeetingMediaStage'
 import { RecordingPanel } from '../components/RecordingPanel'
+import { RoomInteractionPanel } from '../components/RoomInteractionPanel'
+import { RoomMemberDisclosure } from '../components/RoomMemberDisclosure'
 import {
   getRoom,
   leaveRoom,
@@ -15,7 +17,10 @@ import {
   refreshRoomMemberPresence,
   updateRoomMemberMediaState,
 } from '../api/roomApi'
-import { connectRoomEvents } from '../api/roomEvents'
+import {
+  connectRoomEvents,
+  type RoomEventConnection,
+} from '../api/roomEvents'
 import {
   clearRoomSession,
   readRoomSession,
@@ -46,6 +51,11 @@ export function RoomPage({ roomId }: RoomPageProps) {
   >(null)
   const [screenShareMemberIds, setScreenShareMemberIds] = useState<string[]>([])
   const [mediaMemberIds, setMediaMemberIds] = useState<string[]>([])
+  const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([])
+  const [raisedHandMemberIds, setRaisedHandMemberIds] = useState<string[]>([])
+  const [interactionError, setInteractionError] = useState<string | null>(null)
+  const [isEventConnected, setIsEventConnected] = useState(false)
+  const eventConnectionRef = useRef<RoomEventConnection | null>(null)
   const [memberMediaStates, setMemberMediaStates] = useState<
     Record<string, { cameraEnabled: boolean; microphoneEnabled: boolean }>
   >({})
@@ -97,14 +107,55 @@ export function RoomPage({ roomId }: RoomPageProps) {
     let disconnect = () => {}
 
     function connect() {
-      disconnect = connectRoomEvents({
+      const connection = connectRoomEvents({
         onClose: () => {
+          if (eventConnectionRef.current === connection) {
+            eventConnectionRef.current = null
+          }
+          setIsEventConnected(false)
           if (!active) {
             return
           }
           reconnectTimer = window.setTimeout(connect, 1_000)
         },
         onEvent: (event) => {
+          if (event.event === 'resync_required') {
+            connection.disconnect()
+            if (eventConnectionRef.current === connection) {
+              eventConnectionRef.current = null
+            }
+            setIsEventConnected(false)
+            void loadRoom()
+            if (active) {
+              reconnectTimer = window.setTimeout(connect, 0)
+            }
+            return
+          }
+          if (event.event === 'chat_message_sent') {
+            setChatMessages((messages) => {
+              if (messages.some((message) => message.id === event.message.id)) {
+                return messages
+              }
+              return [...messages, event.message].slice(-100)
+            })
+          }
+          if (event.event === 'hand_raise_changed') {
+            setRaisedHandMemberIds((memberIds) =>
+              event.raised
+                ? memberIds.includes(event.member_id)
+                  ? memberIds
+                  : [...memberIds, event.member_id]
+                : memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
+          if (event.event === 'command_rejected') {
+            setInteractionError(event.message)
+          }
+          if (event.event === 'member_left') {
+            setRaisedHandMemberIds((memberIds) =>
+              memberIds.filter((memberId) => memberId !== event.member_id),
+            )
+          }
           if (event.event === 'screen_share_started') {
             setScreenShareMemberIds((memberIds) =>
               memberIds.includes(event.member_id)
@@ -138,23 +189,56 @@ export function RoomPage({ roomId }: RoomPageProps) {
               },
             }))
           }
-          void loadRoom()
+          if (
+            event.event !== 'chat_message_sent' &&
+            event.event !== 'hand_raise_changed' &&
+            event.event !== 'command_rejected'
+          ) {
+            void loadRoom()
+          }
+        },
+        onOpen: () => {
+          setIsEventConnected(true)
+          setInteractionError(null)
+          setRaisedHandMemberIds([])
         },
         roomId: activeSession.roomId,
         sessionToken: activeSession.sessionToken,
       })
+      eventConnectionRef.current = connection
+      disconnect = connection.disconnect
     }
 
     connect()
 
     return () => {
       active = false
+      setIsEventConnected(false)
+      eventConnectionRef.current = null
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
       }
       disconnect()
     }
   }, [currentSession, loadRoom])
+
+  function sendChatMessage(content: string): boolean {
+    setInteractionError(null)
+    const sent = eventConnectionRef.current?.sendChatMessage(content) ?? false
+    if (!sent) {
+      setInteractionError('实时连接尚未就绪，请稍后重试。')
+    }
+    return sent
+  }
+
+  function setHandRaised(raised: boolean): boolean {
+    setInteractionError(null)
+    const sent = eventConnectionRef.current?.setHandRaised(raised) ?? false
+    if (!sent) {
+      setInteractionError('实时连接尚未就绪，请稍后重试。')
+    }
+    return sent
+  }
 
   const handleMediaStateChange = useCallback(
     (state: { cameraEnabled: boolean; microphoneEnabled: boolean }) => {
@@ -426,59 +510,30 @@ export function RoomPage({ roomId }: RoomPageProps) {
           />
 
           <aside className="card bg-base-100 shadow-xl">
-            <div className="card-body">
-              <div className="flex items-center justify-between">
-                <h2 className="card-title">参会成员</h2>
+            <div className="card-body gap-0">
+              <RoomMemberDisclosure
+                members={roomDetails.members.map((member) => ({
+                  id: member.id,
+                  displayName: member.display_name,
+                  isCurrentMember: currentSession?.memberId === member.id,
+                  isHandRaised: raisedHandMemberIds.includes(member.id),
+                  online: member.online,
+                  roleLabel: member.role === 'host' ? '主持人' : '参会者',
+                }))}
+              />
 
-                <span className="badge badge-neutral">
-                  {roomDetails.members.length} 人
-                </span>
-              </div>
-
-              {roomDetails.members.length === 0 ? (
-                <p className="py-8 text-center text-base-content/60">
-                  暂无成员
-                </p>
-              ) : (
-                <ul aria-label="参会成员" className="mt-2 space-y-3">
-                  {roomDetails.members.map((member) => {
-                    const isCurrentMember =
-                      currentSession?.memberId === member.id
-
-                    return (
-                      <li
-                        className="rounded-box border border-base-300 p-3"
-                        key={member.id}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">
-                              {member.display_name}
-                              {isCurrentMember ? '（你）' : ''}
-                            </p>
-
-                            <p className="mt-1 text-xs text-base-content/60">
-                              {member.role === 'host'
-                                ? '主持人'
-                                : '参会者'}
-                            </p>
-                          </div>
-
-                          <span
-                            className={
-                              member.online
-                                ? 'badge badge-success'
-                                : 'badge badge-ghost'
-                            }
-                          >
-                            {member.online ? '在线' : '离线'}
-                          </span>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+              <RoomInteractionPanel
+                currentMemberId={currentSession?.memberId ?? null}
+                errorMessage={interactionError}
+                isConnected={isEventConnected}
+                isHandRaised={
+                  currentSession !== null &&
+                  raisedHandMemberIds.includes(currentSession.memberId)
+                }
+                messages={chatMessages}
+                onSendMessage={sendChatMessage}
+                onSetHandRaised={setHandRaised}
+              />
 
               <RecordingPanel
                 canManage={currentSession?.role === 'host'}

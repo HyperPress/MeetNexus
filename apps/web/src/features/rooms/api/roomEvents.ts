@@ -6,8 +6,19 @@ import {
 interface RoomEventConnectionOptions {
   onClose: () => void
   onEvent: (event: RoomEvent) => void
+  onOpen: () => void
   roomId: string
   sessionToken: string
+}
+
+type RoomCommand =
+  | { command: 'send_chat_message'; content: string }
+  | { command: 'set_hand_raised'; raised: boolean }
+
+export interface RoomEventConnection {
+  disconnect: () => void
+  sendChatMessage: (content: string) => boolean
+  setHandRaised: (raised: boolean) => boolean
 }
 
 function roomEventsUrl(roomId: string): string {
@@ -23,9 +34,10 @@ function roomEventsUrl(roomId: string): string {
 export function connectRoomEvents({
   onClose,
   onEvent,
+  onOpen,
   roomId,
   sessionToken,
-}: RoomEventConnectionOptions): () => void {
+}: RoomEventConnectionOptions): RoomEventConnection {
   const socket = new WebSocket(
     roomEventsUrl(roomId),
     `meetnexus.${sessionToken}`,
@@ -48,10 +60,26 @@ export function connectRoomEvents({
     }
   })
 
+  socket.addEventListener('open', onOpen, { once: true })
   socket.addEventListener('close', onClose, { once: true })
 
-  return () => {
-    socket.removeEventListener('close', onClose)
-    socket.close()
+  function send(command: RoomCommand): boolean {
+    if (socket.readyState !== 1) {
+      return false
+    }
+    socket.send(JSON.stringify(command))
+    return true
+  }
+
+  return {
+    disconnect: () => {
+      socket.removeEventListener('open', onOpen)
+      socket.removeEventListener('close', onClose)
+      socket.close()
+    },
+    sendChatMessage: (content) =>
+      send({ command: 'send_chat_message', content }),
+    setHandRaised: (raised) =>
+      send({ command: 'set_hand_raised', raised }),
   }
 }

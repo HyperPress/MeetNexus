@@ -1,4 +1,5 @@
 import {
+  type MutableRefObject,
   useCallback,
   useEffect,
   useRef,
@@ -40,6 +41,8 @@ const emptyDevices: LocalMediaDevices = {
   microphones: [],
 }
 
+const remoteVideoTrackTimeoutMs = 8_000
+
 export function useMeetingLocalMedia({
   memberId,
   onMediaStateChange,
@@ -59,6 +62,9 @@ export function useMeetingLocalMedia({
   const pendingSubscriptionsRef = useRef(new Set<string>())
   const pendingScreenSubscriptionsRef = useRef(new Set<string>())
   const subscriptionRetryTimersRef = useRef(new Map<string, number>())
+  const subscriptionTrackWatchdogsRef = useRef(new Map<string, number>())
+  const screenSubscriptionRetryTimersRef = useRef(new Map<string, number>())
+  const screenSubscriptionTrackWatchdogsRef = useRef(new Map<string, number>())
   const desiredRemoteMemberIdsRef = useRef(new Set<string>())
   const desiredRemoteScreenMemberIdsRef = useRef(new Set<string>())
 
@@ -122,6 +128,34 @@ export function useMeetingLocalMedia({
     }, 1_000)
     subscriptionRetryTimersRef.current.set(memberId, timerId)
   }, [])
+
+  const scheduleScreenSubscriptionRetry = useCallback((memberId: string) => {
+    if (screenSubscriptionRetryTimersRef.current.has(memberId)) {
+      return
+    }
+
+    const timerId = window.setTimeout(() => {
+      screenSubscriptionRetryTimersRef.current.delete(memberId)
+      if (
+        mountedRef.current &&
+        desiredRemoteScreenMemberIdsRef.current.has(memberId)
+      ) {
+        setSubscriptionRetryVersion((version) => version + 1)
+      }
+    }, 1_000)
+    screenSubscriptionRetryTimersRef.current.set(memberId, timerId)
+  }, [])
+
+  const clearTrackWatchdog = useCallback(
+    (timers: MutableRefObject<Map<string, number>>, memberId: string) => {
+      const timerId = timers.current.get(memberId)
+      if (timerId !== undefined) {
+        window.clearTimeout(timerId)
+        timers.current.delete(memberId)
+      }
+    },
+    [],
+  )
 
   const refreshDevices = useCallback(async () => {
     setIsRefreshingDevices(true)
@@ -272,6 +306,11 @@ export function useMeetingLocalMedia({
     const pendingSubscriptions = pendingSubscriptionsRef.current
     const pendingScreenSubscriptions = pendingScreenSubscriptionsRef.current
     const subscriptionRetryTimers = subscriptionRetryTimersRef.current
+    const subscriptionTrackWatchdogs = subscriptionTrackWatchdogsRef.current
+    const screenSubscriptionRetryTimers =
+      screenSubscriptionRetryTimersRef.current
+    const screenSubscriptionTrackWatchdogs =
+      screenSubscriptionTrackWatchdogsRef.current
     const desiredRemoteMemberIds = desiredRemoteMemberIdsRef.current
     const desiredRemoteScreenMemberIds =
       desiredRemoteScreenMemberIdsRef.current
@@ -300,12 +339,24 @@ export function useMeetingLocalMedia({
         window.clearTimeout(timerId)
       }
       subscriptionRetryTimers.clear()
+      for (const timerId of subscriptionTrackWatchdogs.values()) {
+        window.clearTimeout(timerId)
+      }
+      subscriptionTrackWatchdogs.clear()
       for (const session of screenSubscriptions.values()) {
         void session.close()
       }
       screenSubscriptions.clear()
       pendingScreenSubscriptions.clear()
       desiredRemoteScreenMemberIds.clear()
+      for (const timerId of screenSubscriptionRetryTimers.values()) {
+        window.clearTimeout(timerId)
+      }
+      screenSubscriptionRetryTimers.clear()
+      for (const timerId of screenSubscriptionTrackWatchdogs.values()) {
+        window.clearTimeout(timerId)
+      }
+      screenSubscriptionTrackWatchdogs.clear()
       stopLocalMedia(currentLocalStream)
       stopLocalMedia(currentScreenStream)
     }
@@ -406,6 +457,10 @@ export function useMeetingLocalMedia({
     desiredRemoteMemberIdsRef.current = desiredMemberIds
     for (const [remoteMemberId, session] of subscriptionsRef.current) {
       if (!desiredMemberIds.has(remoteMemberId)) {
+        clearTrackWatchdog(
+          subscriptionTrackWatchdogsRef,
+          remoteMemberId,
+        )
         subscriptionsRef.current.delete(remoteMemberId)
         void session.close()
         setRemoteStreams((currentStreams) => {
@@ -447,6 +502,10 @@ export function useMeetingLocalMedia({
           }))
           let disconnectTimer: number | null = null
           const retrySubscription = () => {
+            clearTrackWatchdog(
+              subscriptionTrackWatchdogsRef,
+              remoteMemberId,
+            )
             if (disconnectTimer !== null) {
               window.clearTimeout(disconnectTimer)
               disconnectTimer = null
@@ -479,6 +538,21 @@ export function useMeetingLocalMedia({
               }
             }
           })
+          // WHEP can become connected before Live777 starts forwarding video.
+          const trackWatchdogId = window.setTimeout(() => {
+            subscriptionTrackWatchdogsRef.current.delete(remoteMemberId)
+            if (
+              mountedRef.current &&
+              subscriptionsRef.current.get(remoteMemberId) === session &&
+              session.stream.getVideoTracks().length === 0
+            ) {
+              retrySubscription()
+            }
+          }, remoteVideoTrackTimeoutMs)
+          subscriptionTrackWatchdogsRef.current.set(
+            remoteMemberId,
+            trackWatchdogId,
+          )
         })
         .catch((error: unknown) => {
           pendingSubscriptionsRef.current.delete(remoteMemberId)
@@ -489,6 +563,7 @@ export function useMeetingLocalMedia({
         })
     }
   }, [
+    clearTrackWatchdog,
     memberId,
     remoteMemberIds,
     roomId,
@@ -509,6 +584,10 @@ export function useMeetingLocalMedia({
     desiredRemoteScreenMemberIdsRef.current = desiredMemberIds
     for (const [remoteMemberId, session] of screenSubscriptionsRef.current) {
       if (!desiredMemberIds.has(remoteMemberId)) {
+        clearTrackWatchdog(
+          screenSubscriptionTrackWatchdogsRef,
+          remoteMemberId,
+        )
         screenSubscriptionsRef.current.delete(remoteMemberId)
         void session.close()
         setRemoteScreenStreams((streams) => {
@@ -548,15 +627,82 @@ export function useMeetingLocalMedia({
             ...streams,
             [remoteMemberId]: session.stream,
           }))
+          let disconnectTimer: number | null = null
+          const retryScreenSubscription = () => {
+            clearTrackWatchdog(
+              screenSubscriptionTrackWatchdogsRef,
+              remoteMemberId,
+            )
+            if (disconnectTimer !== null) {
+              window.clearTimeout(disconnectTimer)
+              disconnectTimer = null
+            }
+            if (
+              screenSubscriptionsRef.current.get(remoteMemberId) !== session
+            ) {
+              return
+            }
+            screenSubscriptionsRef.current.delete(remoteMemberId)
+            void session.close()
+            setRemoteScreenStreams((streams) => {
+              const { [remoteMemberId]: _, ...remainingStreams } = streams
+              return remainingStreams
+            })
+            scheduleScreenSubscriptionRetry(remoteMemberId)
+          }
+          session.connection.addEventListener('connectionstatechange', () => {
+            if (!mountedRef.current) {
+              return
+            }
+            if (session.connection.connectionState === 'failed') {
+              retryScreenSubscription()
+            }
+            if (session.connection.connectionState === 'disconnected') {
+              disconnectTimer = window.setTimeout(
+                retryScreenSubscription,
+                3_000,
+              )
+            }
+            if (session.connection.connectionState === 'connected') {
+              if (disconnectTimer !== null) {
+                window.clearTimeout(disconnectTimer)
+                disconnectTimer = null
+              }
+            }
+          })
+          // WHEP can become connected before Live777 starts forwarding video.
+          const trackWatchdogId = window.setTimeout(() => {
+            screenSubscriptionTrackWatchdogsRef.current.delete(remoteMemberId)
+            if (
+              mountedRef.current &&
+              screenSubscriptionsRef.current.get(remoteMemberId) === session &&
+              session.stream.getVideoTracks().length === 0
+            ) {
+              retryScreenSubscription()
+            }
+          }, remoteVideoTrackTimeoutMs)
+          screenSubscriptionTrackWatchdogsRef.current.set(
+            remoteMemberId,
+            trackWatchdogId,
+          )
         })
         .catch((error: unknown) => {
           pendingScreenSubscriptionsRef.current.delete(remoteMemberId)
           if (mountedRef.current) {
             setScreenErrorMessage(getMeetingMediaErrorMessage(error))
+            scheduleScreenSubscriptionRetry(remoteMemberId)
           }
         })
     }
-  }, [memberId, remoteScreenMemberIds, roomId, sessionToken])
+  }, [
+    clearTrackWatchdog,
+    memberId,
+    remoteScreenMemberIds,
+    roomId,
+    scheduleScreenSubscriptionRetry,
+    sessionToken,
+    subscriptionRetryVersion,
+  ])
 
   const toggleCamera = useCallback(() => {
     const currentStream = localStreamRef.current

@@ -19,7 +19,14 @@ interface IceServerResponse {
   }
 }
 
-const iceServerRequests = new Map<string, Promise<RTCIceServer[]>>()
+// TURN 凭据由后端签发，有效期约 1 小时。缓存 50 分钟后必须重新获取，
+// 否则长时间会议中新建的 PeerConnection 会复用已过期的 TURN 凭据。
+const ICE_SERVER_CACHE_TTL_MS = 50 * 60 * 1_000
+
+const iceServerRequests = new Map<
+  string,
+  { expiresAt: number; request: Promise<RTCIceServer[]> }
+>()
 
 function mediaPath(
   operation: 'whip' | 'whep',
@@ -92,13 +99,22 @@ async function loadIceServers(options: NegotiationOptions): Promise<RTCIceServer
 
 function createPeerConnection(options: NegotiationOptions): Promise<RTCPeerConnection> {
   const cacheKey = `${options.roomId}:${options.sessionToken}`
-  let request = iceServerRequests.get(cacheKey)
-  if (request === undefined) {
-    request = loadIceServers(options)
-    iceServerRequests.set(cacheKey, request)
-    void request.catch(() => iceServerRequests.delete(cacheKey))
+  const now = Date.now()
+  const cached = iceServerRequests.get(cacheKey)
+  if (cached !== undefined && cached.expiresAt > now) {
+    return cached.request.then(
+      (iceServers) => new RTCPeerConnection({ iceServers }),
+    )
   }
-  return request.then((iceServers) => new RTCPeerConnection({ iceServers }))
+  const request = loadIceServers(options)
+  iceServerRequests.set(cacheKey, {
+    expiresAt: now + ICE_SERVER_CACHE_TTL_MS,
+    request,
+  })
+  void request.catch(() => iceServerRequests.delete(cacheKey))
+  return request.then(
+    (iceServers) => new RTCPeerConnection({ iceServers }),
+  )
 }
 
 function waitForIceGathering(connection: RTCPeerConnection): Promise<void> {

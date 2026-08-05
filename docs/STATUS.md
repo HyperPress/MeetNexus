@@ -2,6 +2,8 @@
 
 ## 最新完成
 
+- 2026-08-05：修复前端 TURN 凭据缓存过期。ICE 服务器请求原在整个页面生命周期内缓存，TURN 凭据约 1 小时后过期，导致长时间会议中新建的 PeerConnection 复用无效凭据、TURN 中继失效。缓存改为 50 分钟 TTL，过期后自动重新获取新鲜凭据。修改文件：`apps/web/src/lib/media/whipWhep.ts`。前端 lint、TypeScript/Vite 构建和 15 项房间 Playwright 测试通过。
+- 2026-08-05：服务器媒体链路修复与带宽优化。为公网部署补全 TURN 中继：新增独立 coturn 实例（3479 端口，`lt-cred-mech` 静态认证）供 Live777 使用，原 coturn（3478 端口，`use-auth-secret`）供浏览器使用；修复 admin 用户无法读取 `/etc/meetnexus` 配置导致 Live777 启动失败的问题（admin 加入 coturn 组）。诊断确认服务器带宽约 7 Mbps，TURN 中继下 1080p 屏幕共享实测媒体流量达 10.26 Mbps 超过带宽导致卡顿；前端限制摄像头 720p/30fps、屏幕共享 540p/15fps，双人会议总流量压至约 2.7 Mbps。修改文件：`apps/web/src/lib/media/localMedia.ts`、服务器 `/etc/meetnexus/live777.toml` 与 `/etc/coturn/*`。
 - 2026-08-05：修复远端媒体订阅不稳定与共享屏幕不可见。远端订阅的视频轨道看门狗从固定 8 秒放宽到 15 秒，并仅在连接已 `connected` 且仍未收到视频轨道时才重订阅，收到首个视频轨道即取消看门狗，避免正常但稍慢的转发被反复拆建；`disconnected` 重试窗口从 3 秒放宽到 10 秒，连接恢复为 `connecting`/`connected` 时取消重建。屏幕共享轨道由浏览器停止（`ended`）时回收 WHIP 发布会话，后端据此广播 `ScreenShareStopped`，参会者画面及时清理。修改文件：`apps/web/src/features/meeting/hooks/useMeetingLocalMedia.ts`。前端 oxlint、TypeScript/Vite 生产构建和 15 项房间 Playwright 测试通过；`meeting-media.spec.ts` 首个 WHEP 请求等待为既有时序竞争，对照未改动代码同样失败，本次未改动媒体实现或测试。
 - 2026-08-05：为远端摄像头和屏幕共享 WHEP 订阅增加视频轨道看门狗。连接建立后 8 秒仍未收到视频轨道时，自动清理旧会话并重新订阅；成员离开、连接失败和页面卸载时同步清理重试定时器。
 - 2026-08-04：`feat/chat-hand-interactions` 同步最新 `main`，合并保留成员音视频状态、远端订阅恢复、TURN 配置、刷新会话修复与聊天/举手功能。冲突仅在房间页、事件中心和进度文档中按字段与事件逐项组合，没有整文件覆盖其他成员实现。前端 lint、生产构建和 15 项真实房间 Playwright 用例通过；Rust 格式检查通过，Rust 编译仍受当前环境缺少 MSVC `link.exe` 限制。`meeting-media.spec.ts` 的既有首个 WHEP 请求等待存在时序竞争，本次未改动 `main` 的媒体实现或测试。

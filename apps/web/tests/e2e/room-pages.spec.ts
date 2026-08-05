@@ -12,6 +12,15 @@ const requestId = '44444444-4444-4444-8444-444444444444'
 const sessionToken = 'test-room-session-token'
 const meetingCode = '123-456-789'
 
+async function expandMemberList(page: Page) {
+  const disclosureButton = page.getByRole('button', {
+    name: /参会成员/,
+  })
+  if ((await disclosureButton.getAttribute('aria-expanded')) === 'false') {
+    await disclosureButton.click()
+  }
+}
+
 const roomDetailsResponse = {
   data: {
     room: {
@@ -244,6 +253,7 @@ test.describe('MeetNexus 房间入口页面', () => {
       }),
     ).toBeVisible()
     await expect(page.getByText(`会议号：${meetingCode}`)).toBeVisible()
+    await expandMemberList(page)
     await expect(page.getByText('测试主持人（你）')).toBeVisible()
 
     const heartbeat = await heartbeatRequest
@@ -446,7 +456,9 @@ test.describe('MeetNexus 房间入口页面', () => {
         name: 'MeetNexus 项目例会',
       }),
     ).toBeVisible()
-    await expect(page.getByText('测试主持人')).toBeVisible()
+    await expandMemberList(page)
+    const memberList = page.getByRole('list', { name: '参会成员' })
+    await expect(memberList.getByText('测试主持人')).toBeVisible()
     await expect(
       page.getByText('主持人', {
         exact: true,
@@ -538,7 +550,7 @@ test.describe('MeetNexus 房间入口页面', () => {
     )
   })
 
-  test('成员事件通过受保护的 WebSocket 实时刷新房间列表', async ({
+  test('成员事件、文字聊天和举手通过受保护的 WebSocket 实时同步', async ({
     page,
   }) => {
     await page.addInitScript(
@@ -547,6 +559,7 @@ test.describe('MeetNexus 房间入口页面', () => {
           static instances: IsolatedWebSocket[] = []
           protocol: string
           readyState = 1
+          sentMessages: string[] = []
           url: string
 
           constructor(url: string, protocol: string) {
@@ -559,6 +572,10 @@ test.describe('MeetNexus 房间入口页面', () => {
           close() {
             this.readyState = 3
             this.dispatchEvent(new Event('close'))
+          }
+
+          send(message: string) {
+            this.sentMessages.push(message)
           }
         }
 
@@ -683,7 +700,8 @@ test.describe('MeetNexus 房间入口页面', () => {
     )
 
     await page.goto(`/#/rooms/${roomId}`)
-    const memberList = page.locator('aside > .card-body > ul')
+    await expandMemberList(page)
+    const memberList = page.getByRole('list', { name: '参会成员' })
     await expect(memberList).toHaveCount(1)
     await expect(
       memberList.getByText('测试主持人', { exact: false }),
@@ -696,9 +714,9 @@ test.describe('MeetNexus 房间入口页面', () => {
           url: string
         }>
       }
-      return testWindow.__meetNexusWebSockets?.find((socket) =>
-        socket.protocol.startsWith('meetnexus.'),
-      )
+      return testWindow.__meetNexusWebSockets
+        ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+        .at(-1)
     })
     expect(socket?.protocol).toBe(`meetnexus.${sessionToken}`)
     expect(socket?.url).not.toContain(sessionToken)
@@ -707,6 +725,10 @@ test.describe('MeetNexus 房间入口页面', () => {
       const testWindow = window as typeof window & {
         __meetNexusWebSockets?: Array<EventTarget & { protocol: string }>
       }
+      testWindow.__meetNexusWebSockets
+        ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+        .at(-1)
+        ?.dispatchEvent(new Event('open'))
       const event = new Event('message')
       Object.defineProperty(event, 'data', {
         value: JSON.stringify({
@@ -728,6 +750,88 @@ test.describe('MeetNexus 房间入口页面', () => {
     await expect(
       memberList.getByText('实时参会者', { exact: false }),
     ).toBeVisible()
+
+    await page.getByRole('button', { name: '举手', exact: true }).click()
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const testWindow = window as typeof window & {
+            __meetNexusWebSockets?: Array<{
+              protocol: string
+              sentMessages: string[]
+            }>
+          }
+          return testWindow.__meetNexusWebSockets
+            ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+            .at(-1)
+            ?.sentMessages.at(-1)
+        }),
+      )
+      .toBe(JSON.stringify({ command: 'set_hand_raised', raised: true }))
+
+    await page.evaluate(({ storedMemberId }) => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<EventTarget & { protocol: string }>
+      }
+      const event = new Event('message')
+      Object.defineProperty(event, 'data', {
+        value: JSON.stringify({
+          event: 'hand_raise_changed',
+          member_id: storedMemberId,
+          display_name: '测试主持人',
+          raised: true,
+        }),
+      })
+      testWindow.__meetNexusWebSockets
+        ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+        .at(-1)
+        ?.dispatchEvent(event)
+    }, { storedMemberId: hostId })
+    await expect(page.getByRole('button', { name: '放下手' })).toBeVisible()
+    await expect(memberList.getByText('已举手')).toBeVisible()
+
+    await page.getByLabel('发送消息').fill('大家好')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const testWindow = window as typeof window & {
+            __meetNexusWebSockets?: Array<{
+              protocol: string
+              sentMessages: string[]
+            }>
+          }
+          return testWindow.__meetNexusWebSockets
+            ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+            .at(-1)
+            ?.sentMessages.at(-1)
+        }),
+      )
+      .toBe(JSON.stringify({ command: 'send_chat_message', content: '大家好' }))
+
+    await page.evaluate(({ storedMemberId }) => {
+      const testWindow = window as typeof window & {
+        __meetNexusWebSockets?: Array<EventTarget & { protocol: string }>
+      }
+      const event = new Event('message')
+      Object.defineProperty(event, 'data', {
+        value: JSON.stringify({
+          event: 'chat_message_sent',
+          message: {
+            id: '44444444-4444-4444-8444-444444444444',
+            member_id: storedMemberId,
+            display_name: '测试主持人',
+            content: '大家好',
+            sent_at: '2026-08-04T12:00:00Z',
+          },
+        }),
+      })
+      testWindow.__meetNexusWebSockets
+        ?.filter((socket) => socket.protocol.startsWith('meetnexus.'))
+        .at(-1)
+        ?.dispatchEvent(event)
+    }, { storedMemberId: hostId })
+    await expect(page.getByLabel('会议聊天消息').getByText('大家好')).toBeVisible()
   })
 
   test('主持人可以管理成员录制任务', async ({ page }) => {
